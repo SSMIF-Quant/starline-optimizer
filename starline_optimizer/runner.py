@@ -1,73 +1,36 @@
-from typing import ReadOnly
-import cvxportfolio as cvxp
+from typing import Callable
 import pandas as pd
-from cvxpy import SCS
+import yfinance as yf
+import pypfopt
+
+# TODO Recover the Transaction costs and Holding costs from cvxportfolio
+# TODO Multi-period optimization (reconstruct returns, risk model, etc.)
+# TODO Risk metric integration; we can't just supply a DataFrame of risk calculations
 
 
 class OptimizationEngine:
-    assets: ReadOnly[list[str]]
-    backtest_sim: ReadOnly[cvxp.StockMarketSimulator]
-    policies: ReadOnly[None | list[cvxp.policies.Policy]]
+    data: pd.DataFrame
+    returns: pd.Series
+    risk_model: pd.DataFrame
+    optimizer: Callable[[], pypfopt.efficient_frontier.EfficientFrontier]
 
     def __init__(self, assets: list[str]):
-        self.assets = assets
-        self.backtest_sim = cvxp.StockMarketSimulator(
-            assets, trading_frequency="weekly"
-        )
-        self.policies = None
-        self.results = None
+        # TODO get returns/risk metrics from clickhouse
+        self.data = yf.Tickers(assets).download()["Close"]
+        self.returns = pypfopt.expected_returns.mean_historical_return(self.data)
+        self.risk_model = pypfopt.risk_models.risk_matrix(self.data)
+        self.optimizer = pypfopt.efficient_frontier.EfficientFrontier
 
-    def _make_policy(self, gr: float, gt: float) -> cvxp.policies.Policy:
-        """Creates an optimization policy with the provided hyperparameters.
+    def efficient_risk(self, risk: float):
+        """Creates an optimized portfolio for the risk threshold.
 
-        :param gr: gamma-risk; risk aversion hyperparameter.
-        :param gt: gamma-trade; trade aversion hyperparameter.
+        :param risk: Max risk metric to avoid, must be positive.
         """
-        return cvxp.MultiPeriodOptimization(
-            cvxp.ReturnsForecast()  # TODO get these from clickhouse
-            - gr * cvxp.FactorModelCovariance(num_factors=10)
-            - gt * cvxp.StocksTransactionCost(),
-            [cvxp.LongOnly(), cvxp.LeverageLimit(1)],
-            planning_horizon=6,
-            solver=SCS,
-        )
+        return self.optimizer(self.returns, self.risk_model).efficient_risk(risk)
 
-    def make_policies(self) -> list[cvxp.policies.Policy]:
-        """Creates many optimization policies with different hyperparameters.
-        The policies class variable is populated with the output of this function.
+    def efficient_return(self, returns: float):
+        """Creates an optimized portfolio for some target return value.
+
+        :param returns: Required return of the resulting portfolio.
         """
-        policies = [
-            self._make_policy(gr, gt)
-            for gr in [5, 10, 50, 100, 500, 1000]
-            for gt in [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6]
-        ]
-        self.policies = policies
-        return policies
-
-    def _cash_portfolio(self) -> pd.Series:
-        """Generates a cash portfolio over the provided assets """
-        cash_h = pd.Series([0 for _ in self.assets[0:-1]] + [1000000])
-        cash_h.index = self.assets
-        return cash_h
-
-    def _calculate_trade(self, policy: cvxp.policies.Policy) -> pd.Series:
-        """Creates a portfolio based on a trading policy. """
-        # Cash return is unknown at t = -1 (today)
-        # Which means these executions are using last week's data
-        data = self.backtest_sim.market_data
-        trade_t = data.trading_calendar()[-1]
-        assets = data[trade_t]
-        print(assets)
-        return
-
-        # TODO variable initial portfolio
-        # initial trading portfolio is 1mil of all cash
-        cash_h = self._cash_portfolio()
-        return policy.execute(cash_h, self.backtest_sim.market_data, trade_t)
-
-    def calculate_trades(self) -> list[pd.Series]:
-        """Creates portfolios based on all the policies in self.policies.
-
-        :param assets: The assets to create a portfolios over
-        """
-        return list(map(lambda p: self._calculate_trade(p), self.policies))
+        return self.optimizer(self.returns, self.risk_model).efficient_return(returns)
