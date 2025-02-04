@@ -27,7 +27,7 @@ built around [pypfopt.efficient_frontier.EfficientFrontier](https://pyportfolioo
 
 ## Repo Structure
 Root level includes most of the python build tools.  
-Source code is found in `./starline_optimizer`.
+Source code is found in `./starline_optimizer`.  
  `starline_optimizer.OptimizationEngine` can be found in `./starline_optimizer/engine.py`.
 
 ---
