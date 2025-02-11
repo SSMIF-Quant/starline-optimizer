@@ -10,7 +10,8 @@ type DataInstance = tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.S
 
 
 class DataProvider(cvx.data.MarketData):
-    """Serves market data for the optimization engine. """
+    """Serves market data for the optimization engine."""
+
     tickers = ReadOnly[list[str]]
     __prices: ReadOnly[pd.DataFrame]
     __return: ReadOnly[pd.DataFrame]
@@ -23,7 +24,7 @@ class DataProvider(cvx.data.MarketData):
         :param prices: Asset prices (or symbol values)
         :param volume: Trading volume
         """
-        self.assets = prices.columns.array
+        self.tickers = prices.columns.array
         self.__prices = prices
         self.__return = prices.pct_change().fillna(0)
         self.__return["USDOLLAR"] = 0.04  # TODO temp risk-free rate value
@@ -39,16 +40,20 @@ class DataProvider(cvx.data.MarketData):
         """
         date_pos = self.__prices.index.get_loc(t)
 
-        past_returns = self.__return.iloc[:date_pos-1]
+        past_returns = self.__return.iloc[: date_pos - 1]
         curr_returns = self.__return.iloc[date_pos]
-        past_volumes = self.__volume.iloc[:date_pos-1]
+        past_volumes = self.__volume.iloc[: date_pos - 1]
         curr_volumes = self.__volume.iloc[date_pos]
         curr_prices = self.__prices.iloc[date_pos]
 
         return (past_returns, curr_returns, past_volumes, curr_volumes, curr_prices)
 
-    def trading_calendar(self, start_time: pd.Timestamp = None, end_time: pd.Timestamp = None,
-                         include_end: bool = True) -> pd.Series:
+    def trading_calendar(
+        self,
+        start_time: pd.Timestamp = None,
+        end_time: pd.Timestamp = None,
+        include_end: bool = True,
+    ) -> pd.Series:
         """Get trading calendar between times.
 
         :param start_time: Initial time of the trading calendar. Always
@@ -69,7 +74,7 @@ class DataProvider(cvx.data.MarketData):
 
     @property
     def periods_per_year(self) -> int:
-        return 252
+        return 252  # TODO quarterly, monthly, etc
 
     @property
     def full_universe(self) -> pd.Index:
@@ -95,6 +100,6 @@ class DataProvider(cvx.data.MarketData):
         :returns: Signature.
         """
         assert np.all(partial_universe.isin(self.full_universe))
-        result = f'{self.__class__.__name__}('
-        result += f'datasource={self.datasource.__name__}, '
-        result += f'partial_universe_hash={cvx.utils.hash_(np.array(partial_universe))},'
+        result = f"{self.__class__.__name__}("
+        result += f"datasource={self.datasource.__name__}, "
+        result += f"partial_universe_hash={cvx.utils.hash_(np.array(partial_universe))},"
