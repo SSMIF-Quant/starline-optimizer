@@ -1,36 +1,77 @@
-from typing import Callable
+from typing import ReadOnly
 import pandas as pd
 import yfinance as yf
-import pypfopt
+import cvxportfolio as cvx
 
-# TODO Recover the Transaction costs and Holding costs from cvxportfolio
-# TODO Multi-period optimization (reconstruct returns, risk model, etc.)
-# TODO Risk metric integration; we can't just supply a DataFrame of risk calculations
+# TODO Returns forecast dataframe from Clickhouse
+
+# past_returns, current_returns, past_volumes, current_volumes, current_prices
+type DataInstance = tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.Series]
+
+
+class DataProvider(cvx.data.MarketData):
+    """Serves market data for the optimization engine. """
+    tickers = ReadOnly[list[str]]
+    __prices: ReadOnly[pd.DataFrame]
+    __return: ReadOnly[pd.DataFrame]
+    __volume: ReadOnly[pd.DataFrame]
+
+    def __init__(self, assets: list[str]):
+        # TODO generalize prices, return, volume
+        self.assets = assets
+        data = yf.Tickers(assets).download().bfill()
+        data.index = pd.to_datetime(data.index)
+        self.__prices = data["Close"]
+        self.__return = self.__prices.pct_change().fillna(0)
+        self.__volume = data["Volume"]
+
+    def serve(self, t: pd.Timestamp) -> DataInstance:
+        """Serve data for policy and simulator at time t.
+
+        :param t: Trading time. It must be included in the timestamps returned
+            by self.trading_calendar.
+
+        :returns: past_returns, current_returns, past_volumes, current_volumes, current_prices
+        """
+        date_pos = self.__prices.index.get_loc(t)
+
+        past_returns = self.__return.iloc[:date_pos-1]
+        curr_returns = self.__return.iloc[date_pos]
+        past_volumes = self.__volume.iloc[:date_pos-1]
+        curr_volumes = self.__volume.iloc[date_pos]
+        curr_prices = self.__prices.iloc[date_pos]
+
+        return (past_returns, curr_returns, past_volumes, curr_volumes, curr_prices)
 
 
 class OptimizationEngine:
-    data: pd.DataFrame
-    returns: pd.Series
-    risk_model: pd.DataFrame
-    optimizer: Callable[[], pypfopt.efficient_frontier.EfficientFrontier]
+    policies: ReadOnly[list[cvx.policies.Policy]]
+    __data: ReadOnly[DataProvider]
 
     def __init__(self, assets: list[str]):
         # TODO get returns/risk metrics from clickhouse
-        self.data = yf.Tickers(assets).download()["Close"]
-        self.returns = pypfopt.expected_returns.mean_historical_return(self.data)
-        self.risk_model = pypfopt.risk_models.risk_matrix(self.data)
-        self.optimizer = pypfopt.efficient_frontier.EfficientFrontier
+        self.__data = DataProvider(assets)
+        self.policies = [
+                self._make_policy(gr, gt)
+                for gr in [2, 5, 10, 20, 50, 100, 200, 500]
+                for gt in [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5]
+                ]
 
-    def efficient_risk(self, risk: float):
-        """Creates an optimized portfolio for the risk threshold.
+    def _make_policy(self, gamma_risk: float, gamma_trade: float) -> cvx.policies.Policy:
+        """Creates an optimization policy from the provided hyperparameters. """
+        return cvx.MultiPeriodOptimization(
+                cvx.ReturnsForecast()
+                - gamma_risk * cvx.FactorModelCovariance(num_factors=10)
+                - gamma_trade * cvx.StocksTransactionCost(),
+                [cvx.LongOnly(), cvx.LeverageLimit(1)],  # No shorting, no leverage
+                planning_horizon=6, solver='ECOS'
+            )
 
-        :param risk: Max risk metric to avoid, must be positive.
-        """
-        return self.optimizer(self.returns, self.risk_model).efficient_risk(risk)
+    def _cash_only(self) -> pd.Series:
+        """Creates $1M cash only portfolios over the supplied list of assets. """
+        return pd.Series([0 for _ in self.__data.tickers] + [1_000_000])
 
-    def efficient_return(self, returns: float):
-        """Creates an optimized portfolio for some target return value.
-
-        :param returns: Required return of the resulting portfolio.
-        """
-        return self.optimizer(self.returns, self.risk_model).efficient_return(returns)
+    def execute(self):
+        cash_p = self._cash_only()
+        yesterday = pd.Timestamp.date(pd.Timestamp.now()) - pd.Timedelta(1, "day")
+        return list(map(lambda p: p.execute(cash_p, None, yesterday),  self.policies))
