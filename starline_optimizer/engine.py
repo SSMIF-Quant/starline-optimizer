@@ -2,6 +2,7 @@ from typing import ReadOnly
 import pandas as pd
 import yfinance as yf
 import cvxportfolio as cvx
+import numpy as np
 
 # TODO Returns forecast dataframe from Clickhouse
 
@@ -56,12 +57,45 @@ class DataProvider(cvx.data.MarketData):
 
         :returns: Trading calendar.
         """
-        start_date_pos = 0 if start_time is None else self.__prices.index.get_loc(start_time)
+        calendar = self.__prices.index
+        start_date_pos = 0 if start_time is None else calendar.get_loc(start_time)
         if end_time is not None:
-            end_date_pos = self.__prices.index.get_loc(end_time) - (1 if not include_end else 0)
+            end_date_pos = calendar.get_loc(end_time) - (1 if not include_end else 0)
         else:
             end_date_pos = None
-        return self.__prices.index[start_date_pos:end_date_pos]
+        return calendar[start_date_pos:end_date_pos]
+
+    @property
+    def periods_per_year(self) -> int:
+        return 252
+
+    @property
+    def full_universe(self) -> pd.Index:
+        """Full universe, which might not be available for trading.
+
+        :returns: Full universe.
+        """
+        return self.__prices.columns
+
+    @property
+    def partial_universe_signature(self, partial_universe: pd.Index) -> str:
+        """Unique signature of this instance with a partial universe.
+
+        A partial universe is a subset of the full universe that is
+        available at some time for trading.
+
+        This is used in cvxportfolio.cache to sign back-test caches that
+        are saved on disk. If not redefined it returns None which disables
+        on-disk caching.
+
+        :param partial_universe: A subset of the full universe.
+
+        :returns: Signature.
+        """
+        assert np.all(partial_universe.isin(self.full_universe))
+        result = f'{self.__class__.__name__}('
+        result += f'datasource={self.datasource.__name__}, '
+        result += f'partial_universe_hash={cvx.utils.hash_(np.array(partial_universe))},'
 
 
 class OptimizationEngine:
