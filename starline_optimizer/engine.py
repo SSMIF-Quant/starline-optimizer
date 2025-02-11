@@ -17,6 +17,7 @@ class DataProvider(cvx.data.MarketData):
     __volume: ReadOnly[pd.DataFrame]
 
     def __init__(self, assets: list[str]):
+        # TODO append usdollar info to __return
         # TODO generalize prices, return, volume
         self.assets = assets
         data = yf.Tickers(assets).download().bfill()
@@ -42,6 +43,25 @@ class DataProvider(cvx.data.MarketData):
         curr_prices = self.__prices.iloc[date_pos]
 
         return (past_returns, curr_returns, past_volumes, curr_volumes, curr_prices)
+
+    def trading_calendar(self, start_time: pd.Timestamp = None, end_time: pd.Timestamp = None,
+                         include_end: bool = True) -> pd.Series:
+        """Get trading calendar between times.
+
+        :param start_time: Initial time of the trading calendar. Always
+            inclusive if present. If None, use the first available time.
+        :param end_time: Final time of the trading calendar. If None,
+            use the last available time.
+        :param include_end: Include end time.
+
+        :returns: Trading calendar.
+        """
+        start_date_pos = 0 if start_time is None else self.__prices.index.get_loc(start_time)
+        if end_time is not None:
+            end_date_pos = self.__prices.index.get_loc(end_time) - (1 if not include_end else 0)
+        else:
+            end_date_pos = None
+        return self.__prices.index[start_date_pos:end_date_pos]
 
 
 class OptimizationEngine:
