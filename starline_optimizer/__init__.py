@@ -1,1 +1,2 @@
-from .engine import OptimizationEngine, DataProvider
+from .data_provider import DataProvider
+from .engine import OptimizationEngine
