@@ -1,6 +1,5 @@
 from typing import ReadOnly
 import pandas as pd
-import yfinance as yf
 import cvxportfolio as cvx
 import numpy as np
 
@@ -17,15 +16,18 @@ class DataProvider(cvx.data.MarketData):
     __return: ReadOnly[pd.DataFrame]
     __volume: ReadOnly[pd.DataFrame]
 
-    def __init__(self, assets: list[str]):
-        # TODO append usdollar info to __return
-        # TODO generalize prices, return, volume
-        self.assets = assets
-        data = yf.Tickers(assets).download().bfill()
-        data.index = pd.to_datetime(data.index)
-        self.__prices = data["Close"]
-        self.__return = self.__prices.pct_change().fillna(0)
-        self.__volume = data["Volume"]
+    def __init__(self, prices: pd.DataFrame, volume: pd.DataFrame):
+        """Initializes DataProvider with price and volume data.
+        Both DataFrames must have pd.Timestamp indexes and columns with the price data.
+
+        :param prices: Asset prices (or symbol values)
+        :param volume: Trading volume
+        """
+        self.assets = prices.columns.array
+        self.__prices = prices
+        self.__return = prices.pct_change().fillna(0)
+        self.__return["USDOLLAR"] = 0.04  # TODO temp risk-free rate value
+        self.__volume = volume  # TODO macro values have no volume, need to figure out a workaround
 
     def serve(self, t: pd.Timestamp) -> DataInstance:
         """Serve data for policy and simulator at time t.
