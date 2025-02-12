@@ -21,9 +21,10 @@ pip install -e .
 ```
 
 The flagship product of this repo is `starline_optimizer.OptimizationEngine`,  
-built around [pypfopt.efficient_frontier.EfficientFrontier](https://pyportfolioopt.readthedocs.io/en/latest/MeanVariance.html) of PyPortfolioOpt.  
+built around [cvxportfolio.MultiPeriodOptimization](https://www.cvxportfolio.com/en/stable/optimization_policies.html#cvxportfolio.MultiPeriodOptimization).  
+As of now, the optimizer takes a list of Yahoo finance tickers, and retrieves data about those tickers from yfinance.  
 ```python
-# Sample code
+# Example code
 from starline_optimizer import OptimizationEngine
 op = OptimizationEngine(["AAPL", "IBM", "MSFT"])
 u, t, shares_traded = op.execute(op._cash_only())[0]
