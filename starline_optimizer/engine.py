@@ -1,4 +1,4 @@
-from typing import ReadOnly
+from typing import Sequence
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -9,14 +9,27 @@ from .data_provider import DataProvider
 type TradeResult = tuple[pd.Series, pd.Timestamp, pd.Series]
 
 
+class RiskThresholdConstraint(cvx.constraints.InequalityConstraint):
+    pass
+
+
 class OptimizationEngine:
-    policies: ReadOnly[list[cvx.policies.Policy]]
-    data: ReadOnly[DataProvider]
+    policies: list[cvx.policies.Policy]
+    data: DataProvider
 
     def __init__(self, assets: list[str]):
         # TODO get asset information from clickhouse
         dataraw = yf.Tickers(assets).download()
-        self.data = DataProvider(dataraw["Close"], dataraw["Volume"])
+        if dataraw is None:
+            raise RuntimeError(f"Failed to download yfinance data for tickers {assets}")
+
+        prices = dataraw["Close"]
+        volume = dataraw["Volume"]
+
+        if not isinstance(prices, pd.DataFrame) or not isinstance(volume, pd.DataFrame):
+            raise RuntimeError(f"yfinance data for tickers {assets} are invalid (requires pd.DataFrame).")
+
+        self.data = DataProvider(prices, volume)
         self.policies = [
             self._make_policy(gr, gt)
             for gr in [5, 10, 20, 50, 100, 200, 500]
@@ -29,7 +42,7 @@ class OptimizationEngine:
             cvx.ReturnsForecast()
             - gamma_risk * cvx.FactorModelCovariance(num_factors=10)
             - gamma_trade * cvx.StocksTransactionCost(),
-            [cvx.LongOnly(), cvx.LeverageLimit(1)],  # No shorting, no leverage
+            [cvx.LongOnly(), cvx.LeverageLimit(1)],
             planning_horizon=6,
             solver="ECOS",
         )
@@ -42,7 +55,7 @@ class OptimizationEngine:
 
     def execute(
         self, h: pd.Series, t: pd.Timestamp = None
-    ) -> list[TradeResult]:
+    ) -> Sequence[TradeResult]:
         """Executes all trading policies at current or user specified time.
 
         :param h: Holdings vector, in dollars, including the cash account (the last element).
@@ -53,4 +66,4 @@ class OptimizationEngine:
         """
         if t is None:
             t = self.data.trading_calendar()[-1]
-        return list(map(lambda p: p.execute(h, self.data, t), self.policies))
+        return (map(lambda p: p.execute(h, self.data, t), self.policies))

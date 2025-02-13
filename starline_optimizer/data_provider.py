@@ -1,7 +1,5 @@
-from typing import ReadOnly
 import pandas as pd
 import cvxportfolio as cvx
-import numpy as np
 
 # TODO Returns forecast dataframe from Clickhouse
 
@@ -12,10 +10,10 @@ type DataInstance = tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.S
 class DataProvider(cvx.data.MarketData):
     """Serves market data for the optimization engine."""
 
-    tickers = ReadOnly[list[str]]
-    __prices: ReadOnly[pd.DataFrame]
-    __return: ReadOnly[pd.DataFrame]
-    __volume: ReadOnly[pd.DataFrame]
+    tickers: pd.Index
+    __prices: pd.DataFrame
+    __return: pd.DataFrame
+    __volume: pd.DataFrame
 
     def __init__(self, prices: pd.DataFrame, volume: pd.DataFrame):
         """Initializes DataProvider with price and volume data.
@@ -24,7 +22,7 @@ class DataProvider(cvx.data.MarketData):
         :param prices: Asset prices (or symbol values)
         :param volume: Trading volume
         """
-        self.tickers = prices.columns.array
+        self.tickers = prices.columns
         self.__prices = prices
         self.__return = prices.pct_change().fillna(0)
         self.__return["USDOLLAR"] = 0.04  # TODO temp risk-free rate value
@@ -40,6 +38,9 @@ class DataProvider(cvx.data.MarketData):
         """
         date_pos = self.__prices.index.get_loc(t)
 
+        if not isinstance(date_pos, int):
+            raise pd.errors.DataError(f"Price data for DataProvider has duplicate timestamps {t}.")
+
         past_returns = self.__return.iloc[: date_pos - 1]
         curr_returns = self.__return.iloc[date_pos]
         past_volumes = self.__volume.iloc[: date_pos - 1]
@@ -50,10 +51,10 @@ class DataProvider(cvx.data.MarketData):
 
     def trading_calendar(
         self,
-        start_time: pd.Timestamp = None,
-        end_time: pd.Timestamp = None,
+        start_time: None | pd.Timestamp = None,
+        end_time: None | pd.Timestamp = None,
         include_end: bool = True,
-    ) -> pd.Series:
+    ) -> pd.Index:
         """Get trading calendar between times.
 
         :param start_time: Initial time of the trading calendar. Always
@@ -66,10 +67,17 @@ class DataProvider(cvx.data.MarketData):
         """
         calendar = self.__prices.index
         start_date_pos = 0 if start_time is None else calendar.get_loc(start_time)
+
+        end_date_pos = calendar.get_loc(end_time)
         if end_time is not None:
-            end_date_pos = calendar.get_loc(end_time) - (1 if not include_end else 0)
+            end_date_pos = calendar.get_loc(end_time)
+            if not isinstance(end_date_pos, int):
+                raise pd.errors.DataError("Price data for DataProvider has duplicate timestamps.")
+            if not include_end:
+                end_date_pos -= 1
         else:
             end_date_pos = None
+
         return calendar[start_date_pos:end_date_pos]
 
     @property
@@ -83,23 +91,3 @@ class DataProvider(cvx.data.MarketData):
         :returns: Full universe.
         """
         return self.__prices.columns
-
-    @property
-    def partial_universe_signature(self, partial_universe: pd.Index) -> str:
-        """Unique signature of this instance with a partial universe.
-
-        A partial universe is a subset of the full universe that is
-        available at some time for trading.
-
-        This is used in cvxportfolio.cache to sign back-test caches that
-        are saved on disk. If not redefined it returns None which disables
-        on-disk caching.
-
-        :param partial_universe: A subset of the full universe.
-
-        :returns: Signature.
-        """
-        assert np.all(partial_universe.isin(self.full_universe))
-        result = f"{self.__class__.__name__}("
-        result += f"datasource={self.datasource.__name__}, "
-        result += f"partial_universe_hash={cvx.utils.hash_(np.array(partial_universe))},"
