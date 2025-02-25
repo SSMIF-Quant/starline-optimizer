@@ -1,6 +1,6 @@
 import pandas as pd
 
-from .clickhouse_globals import DATABASES, client
+from .clickhouse_globals import DATABASES, client, OLDEST_ENTRY_DATE
 
 
 def coerce_uppercase_tablename(table: str) -> str:
@@ -96,3 +96,47 @@ def get_timespan(table: str, start: pd.Timestamp = None, end: pd.Timestamp = Non
     # List strings are tab-separated; make them newline-separated
     # and convert each resulting row into a tuple
     return list(map(lambda r: tuple(r.split(", ")), ", ".join(data).split("\n")))
+
+
+def upsert_entries(table: str, rows: list[tuple] | pd.DataFrame, *, ch_client=None):
+    """
+    Inserts or updates entries in the table
+
+    :param table: The table name to update data for, case insensitive
+    :param rows: Entries to update the table with
+                 If rows is list[tuple], the first element of each tuple must be the date
+                 If rows is DataFrame, column labels must match table column names
+                 and the date column must be convertible to pd.Timestamp
+
+    Optional
+    :param ch_client: Alternate Clickhouse client to use for insertion
+    """
+    if ch_client is None:
+        ch_client = client
+
+    table = coerce_uppercase_tablename(table)
+
+    if isinstance(rows, pd.DataFrame):
+        rows["date"] = pd.to_datetime(rows["date"])  # Type coercion
+        # Omit all entries before OLDEST_ENTRY_DATE
+        rows = rows[rows["date"] >= OLDEST_ENTRY_DATE]
+        ch_client.insert_df(table, rows)
+
+    else:
+        # Omit all entries before OLDEST_ENTRY_DATE
+        rows = list(filter(lambda r: r[0] >= OLDEST_ENTRY_DATE, rows))
+        ch_client.command(f"INSERT INTO {table} (*) VALUES", rows)
+
+    # Deletes duplicate values
+    ch_client.command(f"OPTIMIZE TABLE {table}")
+
+
+def get_recent_entry(table: str) -> pd.Timestamp:
+    """Gets the most recent entry for a table.
+    If the table has no entries, defaults to the earliest date possible
+
+    :param table: Table to query for most recent entry
+
+    :return: Timestamp of the most recent entry
+    """
+    return pd.Timestamp(client.command(f"SELECT max(date) FROM {table}"))

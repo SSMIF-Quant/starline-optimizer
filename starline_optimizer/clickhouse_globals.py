@@ -1,5 +1,7 @@
 import os
 
+import pandas as pd
+
 from clickhouse_connect import get_client, common
 
 # This should always be set before creating a client
@@ -25,6 +27,9 @@ DB_SETTINGS = {
 }
 
 client = get_client(**DB_SETTINGS)
+
+# Omit all database entries before 1/1/2000
+OLDEST_ENTRY_DATE = pd.Timestamp(year=2000, month=1, day=1)
 
 # Running tally of the database names we have
 DATABASES = ["series", "fred"]
