@@ -3,7 +3,7 @@
 import yfinance as yf
 import numpy as np
 from .clickhouse_globals import client
-from .clickhouse import coerce_uppercase_tablename, get_timespan, get_recent_entry, upsert_entries
+from .clickhouse import coerce_uppercase_tablename, get_recent_entry, upsert_entries
 
 
 def create_series_table(ticker: str):

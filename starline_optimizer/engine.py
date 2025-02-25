@@ -19,19 +19,7 @@ class OptimizationEngine:
 
     def __init__(self, assets: list[str]):
         # TODO get asset information from clickhouse
-        dataraw = yf.Tickers(assets).download()
-        if dataraw is None:
-            raise RuntimeError(f"Failed to download yfinance data for tickers {assets}")
-
-        prices = dataraw["Close"]
-        volume = dataraw["Volume"]
-
-        if not isinstance(prices, pd.DataFrame) or not isinstance(volume, pd.DataFrame):
-            raise RuntimeError(
-                f"yfinance data for tickers {assets} are invalid (requires pd.DataFrame)."
-            )
-
-        self.data = DataProvider(prices, volume)
+        self.data = DataProvider(assets)
         self.policies = [
             self._make_policy(gr, gt)
             for gr in [5, 10, 20, 50, 100, 200, 500]
