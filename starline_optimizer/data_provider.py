@@ -68,7 +68,6 @@ class DataProvider(cvx.data.MarketData):
         calendar = self.__prices.index
         start_date_pos = 0 if start_time is None else calendar.get_loc(start_time)
 
-        end_date_pos = calendar.get_loc(end_time)
         if end_time is not None:
             end_date_pos = calendar.get_loc(end_time)
             if not isinstance(end_date_pos, int):
