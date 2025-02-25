@@ -36,7 +36,7 @@ def list_tables(database: str = None) -> list[str]:
         # Each row is info about one table
         # The first entry in each is the table database, second is the table name
         tables_unformatted = client.command(
-                    f"""
+            f"""
                     SELECT table_schema, table_name FROM information_schema.tables
                     WHERE table_schema = '{database}'
                     """
@@ -45,7 +45,7 @@ def list_tables(database: str = None) -> list[str]:
 
     if database is None:
         tables_unformatted = client.command(
-                """
+            """
                     SELECT table_schema, table_name FROM information_schema.tables
                     WHERE table_schema != 'INFORMATION_SCHEMA' AND
                     table_schema != 'information_schema' AND

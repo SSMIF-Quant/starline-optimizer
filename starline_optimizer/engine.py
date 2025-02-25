@@ -27,7 +27,9 @@ class OptimizationEngine:
         volume = dataraw["Volume"]
 
         if not isinstance(prices, pd.DataFrame) or not isinstance(volume, pd.DataFrame):
-            raise RuntimeError(f"yfinance data for tickers {assets} are invalid (requires pd.DataFrame).")
+            raise RuntimeError(
+                f"yfinance data for tickers {assets} are invalid (requires pd.DataFrame)."
+            )
 
         self.data = DataProvider(prices, volume)
         self.policies = [
@@ -53,9 +55,7 @@ class OptimizationEngine:
         portfolio.index = np.append(self.data.tickers, "USDOLLAR")
         return portfolio
 
-    def execute(
-        self, h: pd.Series, t: pd.Timestamp = None
-    ) -> Sequence[TradeResult]:
+    def execute(self, h: pd.Series, t: pd.Timestamp = None) -> Sequence[TradeResult]:
         """Executes all trading policies at current or user specified time.
 
         :param h: Holdings vector, in dollars, including the cash account (the last element).
@@ -66,4 +66,4 @@ class OptimizationEngine:
         """
         if t is None:
             t = self.data.trading_calendar()[-1]
-        return (map(lambda p: p.execute(h, self.data, t), self.policies))
+        return map(lambda p: p.execute(h, self.data, t), self.policies)
