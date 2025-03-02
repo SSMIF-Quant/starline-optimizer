@@ -1,0 +1,10 @@
+services:
+  starline-optimizer:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: starline-optimizer
+    environment:
+      - PORT=${PORT}
+    working_dir: /app
+
