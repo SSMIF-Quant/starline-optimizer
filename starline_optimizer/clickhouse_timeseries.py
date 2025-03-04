@@ -43,9 +43,12 @@ def update_timeseries(table: str):
     create_series_table(ticker)  # If the table doesn't exist beforehand
     start_date = get_recent_entry(table)
 
+    # TODO we can do better than yfinance
     dataraw = yf.Tickers(ticker).download(start=start_date)
     if dataraw is None:
         raise RuntimeError(f"Failed to download yfinance data for ticker {ticker}")
+
+    # DataFrame manip to get dataframes with date, price, volume columns for each ticker
     data = dataraw.swaplevel(axis=1)[ticker][["Close", "Volume"]]
     data.reset_index(inplace=True)
     data.columns = ["date", "price", "volume"]

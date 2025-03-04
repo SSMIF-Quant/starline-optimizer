@@ -7,9 +7,16 @@ def coerce_uppercase_tablename(table: str) -> str:
     """
     Given a table name in the format
     "[database].[table]" or "[table]",
+    replaces spaces with underscores, and
     coerces and returns the table portion to uppercase.
     ex. series.aapl becomes series.AAPL
+        "spy us equity" becomes SPY_US_EQUITY
+
+    :param table: Tablename with or without the leading database schema
+
+    :return: Tablename with the name uppercased and spaces replaced
     """
+    table = table.replace(" ", "_")
     *database, table = table.split(".")
     table = table.upper()
 

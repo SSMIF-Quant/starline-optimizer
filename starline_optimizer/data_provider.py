@@ -10,7 +10,7 @@ from .clickhouse_timeseries import update_timeseries
 type DataInstance = tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.Series]
 
 
-def _tuples_to_df(data: list[tuple[pd.Timestamp, float]]) -> pd.DataFrame:
+def _tuples_to_df(data: list[tuple[pd.Timestamp, float, int]]) -> pd.DataFrame:
     """
     Converts a list of tuples that represent rows in the "series" database into a DataFrame
 
@@ -39,8 +39,7 @@ class DataProvider(cvx.data.MarketData):
         """Initializes DataProvider with price and volume data.
         Both DataFrames must have pd.Timestamp indexes and columns with the price data.
 
-        :param prices: Asset prices (or symbol values)
-        :param volume: Trading volume
+        :param tickers: List of tickers for this DataProvider instance
         """
         for t in tickers:
             update_timeseries(f"series.{t}")
@@ -52,6 +51,7 @@ class DataProvider(cvx.data.MarketData):
         volumes_df = pd.concat(volumes, axis=1)
 
         # All database entries are type str, convert to actual useful values
+        # If any price entry is missing from the dataframe use the previous date's entry
         prices_df = prices_df.map(float).ffill()
         volumes_df = volumes_df.map(int).fillna(0)
 
@@ -65,9 +65,9 @@ class DataProvider(cvx.data.MarketData):
         """Serve data for policy and simulator at time t.
 
         :param t: Trading time. It must be included in the timestamps returned
-            by self.trading_calendar.
+                  by self.trading_calendar.
 
-        :returns: past_returns, current_returns, past_volumes, current_volumes, current_prices
+        :return: past_returns, current_returns, past_volumes, current_volumes, current_prices
         """
         date_pos = self.__prices.index.get_loc(t)
 
@@ -90,13 +90,13 @@ class DataProvider(cvx.data.MarketData):
     ) -> pd.Index:
         """Get trading calendar between times.
 
-        :param start_time: Initial time of the trading calendar. Always
-            inclusive if present. If None, use the first available time.
+        :param start_time: Initial time of the trading calendar. Always inclusive
+                           if present. If None, use the first available time.
         :param end_time: Final time of the trading calendar. If None,
-            use the last available time.
+                         use the last available time.
         :param include_end: Include end time.
 
-        :returns: Trading calendar.
+        :return: Trading calendar.
         """
         calendar = self.__prices.index
         start_date_pos = 0 if start_time is None else calendar.get_loc(start_time)
@@ -120,6 +120,6 @@ class DataProvider(cvx.data.MarketData):
     def full_universe(self) -> pd.Index:
         """Full universe, which might not be available for trading.
 
-        :returns: Full universe.
+        :return: Full universe.
         """
         return self.__prices.columns
