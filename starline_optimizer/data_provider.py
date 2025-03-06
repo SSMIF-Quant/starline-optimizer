@@ -52,8 +52,8 @@ class DataProvider(cvx.data.MarketData):
 
         # All database entries are type str, convert to actual useful values
         # If any price entry is missing from the dataframe use the previous date's entry
-        prices_df = prices_df.map(float).ffill()
-        volumes_df = volumes_df.map(int).fillna(0)
+        prices_df = prices_df.ffill().map(float)
+        volumes_df = volumes_df.fillna(0).map(int)
 
         self.tickers = tickers
         self.__prices = prices_df
