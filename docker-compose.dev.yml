@@ -1,0 +1,17 @@
+services:
+  starline-optimizer:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: starline-optimizer
+    environment:
+      - PORT=8080
+      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST}
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}
+    ports:
+      - "8080:8080"
+    working_dir: /app
+    network_mode: host
