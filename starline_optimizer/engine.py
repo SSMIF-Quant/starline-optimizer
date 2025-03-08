@@ -38,17 +38,17 @@ class OptimizationEngine:
         """
         return cvx.forecast.HistoricalMeanReturn()
 
-    def risk_metric(self):
+    def _default_risk_metric(self):
         """ Produces a new risk metric instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
-        return cvx.FactorModelCovariance(num_factors=10)
+        return cvx.forecast.HistoricalFactorizedCovariance()
 
     def _make_policy(self, gamma_risk: float, gamma_trade: float) -> cvx.policies.Policy:
         """Creates an optimization policy from the provided hyperparameters."""
         return cvx.MultiPeriodOptimization(
             cvx.ReturnsForecast(self._default_r_forecast())
-            - gamma_risk * self.risk_metric()
+            - gamma_risk * cvx.FullCovariance(self._default_risk_metric())
             - gamma_trade * cvx.StocksTransactionCost(),
             [cvx.LongOnly(), cvx.LeverageLimit(1)],
             planning_horizon=6,
@@ -64,12 +64,28 @@ class OptimizationEngine:
     def h_return(self, h: pd.Series) -> float:
         """Calculates expected return for a portfolio produced by self.execute().
 
-        :param h: Portfolio to calculate return for, in USDOLLARS
+        :param h: Portfolio to calculate return for
+                  If cash position is provided, uses the risk free rate for cash returns.
 
         :return: Expected return
         """
+        w = h / np.sum(np.abs(h))  # Portfolio by asset weight
         exp_returns = self._default_r_forecast().estimate(self.data, self.t)
-        return 1 + sum(map(lambda a, b: a * b, exp_returns, h))
+        # Include risk-free rate for cash position
+        # exp_returns["USDOLLAR"] = self.risk_free_rate ** (1/252)
+        return 1 + sum(map(lambda a, b: a * b, exp_returns, w))
+
+    def h_risk(self, h: pd.Series) -> float:
+        """Calculates expected risk for a portfolio produced by self.execute().
+
+        :param h: Portfolio to calculate risk for
+                  Must not contain the cash position
+
+        :return: Expected risk
+        """
+        w = h / np.sum(np.abs(h))  # Portfolio by asset weight
+        risk_mat = self._default_risk_metric().estimate(self.data, self.t)
+        return w.T @ risk_mat @ w
 
     def execute(self, h: pd.Series, t: pd.Timestamp = None) -> Sequence[TradeResult]:
         """Executes all trading policies at current or user specified time.
@@ -83,5 +99,3 @@ class OptimizationEngine:
         if t is None:
             t = self.t
         return list(map(lambda p: p.execute(h, self.data, t), self.policies))
-        # portfolios = map(lambda t: t[0] + w, trades)
-        # return map(lambda p: (self._portfolio_return(p[0][:-1]), p), portfolios)
