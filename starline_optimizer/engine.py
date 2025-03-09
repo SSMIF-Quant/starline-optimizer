@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import cvxportfolio as cvx
 from .data_provider import DataProvider
+from .threshold_constraints import ReturnsTarget
 
 # u, t, shares_traded
 type TradeResult = tuple[pd.Series, pd.Timestamp, pd.Series]
@@ -24,12 +25,12 @@ class OptimizationEngine:
     def __init__(self, assets: list[str]):
         # TODO get return forecasts from clickhouse and pass into r_forecast
         self.data = DataProvider(assets)
-        self.t = self.data.trading_calendar()[-1]
+        self.t = self.data.trading_calendar()[-1]  # Current trading time
         self.risk_free_rate = 0.04
         self.policies = [
             self._make_policy(gr, gt)
             for gr in [5, 10, 20, 50, 100, 200, 500]
-            for gt in [3, 3.5, 4, 4.5, 5, 5.5, 6]
+            for gt in [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5]
         ]
 
     def _default_r_forecast(self):
@@ -46,11 +47,13 @@ class OptimizationEngine:
 
     def _make_policy(self, gamma_risk: float, gamma_trade: float) -> cvx.policies.Policy:
         """Creates an optimization policy from the provided hyperparameters."""
+        rhat = self._default_r_forecast().estimate(self.data, self.t)
         return cvx.MultiPeriodOptimization(
             cvx.ReturnsForecast(self._default_r_forecast())
             - gamma_risk * cvx.FullCovariance(self._default_risk_metric())
             - gamma_trade * cvx.StocksTransactionCost(),
-            [cvx.LongOnly(), cvx.LeverageLimit(1)],
+            [cvx.LongOnly(), cvx.LeverageLimit(1), ReturnsTarget(rhat, 1.05)],
+            # [cvx.LongOnly(), cvx.LeverageLimit(1)],
             planning_horizon=6,
             solver="ECOS",
         )
