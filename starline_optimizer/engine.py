@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import cvxportfolio as cvx
 from .data_provider import DataProvider
-from .threshold_constraints import ReturnsTarget
+from .threshold_constraints import ReturnsTarget, RiskThreshold
 
 # u, t, shares_traded
 type TradeResult = tuple[pd.Series, pd.Timestamp, pd.Series]
@@ -48,11 +48,16 @@ class OptimizationEngine:
     def _make_policy(self, gamma_risk: float, gamma_trade: float) -> cvx.policies.Policy:
         """Creates an optimization policy from the provided hyperparameters."""
         rhat = self._default_r_forecast().estimate(self.data, self.t)
+
+        # TODO WHY IS THE VARCOVAR MATRIX NOT POSITIVE DEFINITE
+        sigma = self._default_risk_metric().estimate(self.data, self.t)
+
         return cvx.MultiPeriodOptimization(
             cvx.ReturnsForecast(self._default_r_forecast())
             - gamma_risk * cvx.FullCovariance(self._default_risk_metric())
             - gamma_trade * cvx.StocksTransactionCost(),
-            [cvx.LongOnly(), cvx.LeverageLimit(1), ReturnsTarget(rhat, 1.05)],
+            # [cvx.LongOnly(), cvx.LeverageLimit(1), ReturnsTarget(rhat, 1.02), RiskThreshold(sigma, 0.1)],
+            [cvx.LongOnly(), cvx.LeverageLimit(1), ReturnsTarget(rhat, 1.02)],
             # [cvx.LongOnly(), cvx.LeverageLimit(1)],
             planning_horizon=6,
             solver="ECOS",
