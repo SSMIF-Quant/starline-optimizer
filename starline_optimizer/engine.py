@@ -34,13 +34,13 @@ class OptimizationEngine:
         ]
 
     def _default_r_forecast(self):
-        """ Produces a new returns forecast instance.
+        """Produces a new returns forecaster instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
         return cvx.forecast.HistoricalMeanReturn()
 
     def _default_risk_metric(self):
-        """ Produces a new risk metric instance.
+        """Produces a new risk metric instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
         return cvx.forecast.HistoricalFactorizedCovariance()
@@ -64,7 +64,9 @@ class OptimizationEngine:
         )
 
     def _cash_only(self) -> pd.Series:
-        """Creates $1M cash only portfolios over the data's list of assets."""
+        """Creates $1M cash only portfolios.
+        A series of all 0s except at the USDOLLAR entry in the final position.
+        """
         portfolio = pd.Series([0 for _ in self.data.tickers] + [1_000_000])
         portfolio.index = np.append(self.data.tickers, "USDOLLAR")
         return portfolio
@@ -73,9 +75,9 @@ class OptimizationEngine:
         """Calculates expected return for a portfolio produced by self.execute().
 
         :param h: Portfolio to calculate return for
-                  If cash position is provided, uses the risk free rate for cash returns.
+                  Cash position ignored
 
-        :return: Expected return
+        :return: Expected return at current time
         """
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
         exp_returns = self._default_r_forecast().estimate(self.data, self.t)
@@ -89,7 +91,7 @@ class OptimizationEngine:
         :param h: Portfolio to calculate risk for
                   Must not contain the cash position
 
-        :return: Expected risk
+        :return: Expected risk at current time
         """
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
         risk_mat = self._default_risk_metric().estimate(self.data, self.t)
@@ -100,7 +102,7 @@ class OptimizationEngine:
 
         :param h: Holdings vector, in dollars, including the cash account (the last element).
         :param t: Time of execution
-                  Defaults to earliest time in our data's trading calendar
+                  Defaults to now
 
         :return: List of trade weights, trade timestamps, and shares traded
         """

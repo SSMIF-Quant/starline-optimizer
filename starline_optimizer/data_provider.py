@@ -58,7 +58,7 @@ class DataProvider(cvx.data.MarketData):
         self.tickers = tickers
         self.__prices = prices_df
         self.__return = prices_df.pct_change().fillna(0)
-        self.__return["USDOLLAR"] = 0.04 ** 252  # TODO temp risk-free rate value
+        self.__return["USDOLLAR"] = 0.04**252  # TODO temp risk-free rate value
         self.__volume = volumes_df  # TODO macro values have no volume
 
     def serve(self, t: pd.Timestamp) -> DataInstance:
