@@ -1,4 +1,3 @@
-from typing import Sequence
 import numpy as np
 import pandas as pd
 import cvxportfolio as cvx
@@ -12,12 +11,7 @@ type TradeResult = tuple[pd.Series, pd.Timestamp, pd.Series]
 type PortfolioPerformance = tuple[float, float]
 
 
-class RiskThresholdConstraint(cvx.constraints.InequalityConstraint):
-    pass
-
-
 class OptimizationEngine:
-    policies: list[cvx.policies.Policy]
     data: DataProvider
     t: pd.Timestamp
     risk_free_rate: float
@@ -26,12 +20,7 @@ class OptimizationEngine:
         # TODO get return forecasts from clickhouse and pass into r_forecast
         self.data = DataProvider(assets)
         self.t = self.data.trading_calendar()[-1]  # Current trading time
-        self.risk_free_rate = 0.04
-        self.policies = [
-            self._make_policy(gr, gt)
-            for gr in [5, 10, 20, 50, 100, 200, 500]
-            for gt in [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5]
-        ]
+        self.risk_free_rate = 1.04 ** (1/252)  # TODO temp non-annualized risk free rate
 
     def _default_r_forecast(self):
         """Produces a new returns forecaster instance.
@@ -45,20 +34,19 @@ class OptimizationEngine:
         """
         return cvx.forecast.HistoricalFactorizedCovariance()
 
-    def _make_policy(self, gamma_risk: float, gamma_trade: float) -> cvx.policies.Policy:
-        """Creates an optimization policy from the provided hyperparameters."""
-        rhat = self._default_r_forecast().estimate(self.data, self.t)
+    def _make_policy(self, gamma_risk: float, gamma_trade: float,
+                     constraints: list[cvx.constraints.Constraint]) -> cvx.policies.Policy:
+        """Creates an optimization policy from the provided hyperparameters.
 
-        # TODO WHY IS THE VARCOVAR MATRIX NOT POSITIVE DEFINITE
-        sigma = self._default_risk_metric().estimate(self.data, self.t)
-
+        :param gamma_risk: Risk aversion hyperparameter
+        :param gamma_trade: Trade aversion hyperparameter
+        :param constraints: Extra constraints for the optimizer
+        """
         return cvx.MultiPeriodOptimization(
             cvx.ReturnsForecast(self._default_r_forecast())
             - gamma_risk * cvx.FullCovariance(self._default_risk_metric())
             - gamma_trade * cvx.StocksTransactionCost(),
-            # [cvx.LongOnly(), cvx.LeverageLimit(1), ReturnsTarget(rhat, 1.02), RiskThreshold(sigma, 0.1)],
-            [cvx.LongOnly(), cvx.LeverageLimit(1), ReturnsTarget(rhat, 1.02)],
-            # [cvx.LongOnly(), cvx.LeverageLimit(1)],
+            [cvx.LongOnly(), cvx.LeverageLimit(1), *constraints],
             planning_horizon=6,
             solver="ECOS",
         )
@@ -82,7 +70,7 @@ class OptimizationEngine:
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
         exp_returns = self._default_r_forecast().estimate(self.data, self.t)
         # Include risk-free rate for cash position
-        # exp_returns["USDOLLAR"] = self.risk_free_rate ** (1/252)
+        # exp_returns["USDOLLAR"] = self.risk_free_rate
         return 1 + sum(map(lambda a, b: a * b, exp_returns, w))
 
     def h_risk(self, h: pd.Series) -> float:
@@ -97,15 +85,37 @@ class OptimizationEngine:
         risk_mat = self._default_risk_metric().estimate(self.data, self.t)
         return w.T @ risk_mat @ w
 
-    def execute(self, h: pd.Series, t: pd.Timestamp = None) -> Sequence[TradeResult]:
+    def execute(self, h: pd.Series, t: pd.Timestamp = None, *args,
+                r_target: None | float = None,
+                sig_thresh: None | float = None) -> list[TradeResult]:
         """Executes all trading policies at current or user specified time.
 
         :param h: Holdings vector, in dollars, including the cash account (the last element).
         :param t: Time of execution
                   Defaults to now
 
+        :param r_target: Returns target value
+        :param sig_thresh: Risk threshold value
+                           SHOULD NOT BE USED! RISK THRESHOLD DOESN'T WORK
+
         :return: List of trade weights, trade timestamps, and shares traded
         """
+        addtl_constraints = []
+
         if t is None:
             t = self.t
-        return list(map(lambda p: p.execute(h, self.data, t), self.policies))
+        if r_target is not None:
+            rhat = self._default_r_forecast().estimate(self.data, self.t)
+            addtl_constraints.append(ReturnsTarget(rhat, r_target))
+        if sig_thresh is not None:
+            # TODO WHY IS THE VARCOVAR MATRIX NOT POSITIVE DEFINITE
+            sigma = self._default_risk_metric().estimate(self.data, self.t)
+            addtl_constraints.append(RiskThreshold(sigma, sig_thresh))
+
+        policies = [
+            self._make_policy(gr, gt, addtl_constraints)
+            for gr in [5, 10, 20, 50, 100, 200, 500]
+            for gt in [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5]
+        ]
+
+        return list(map(lambda p: p.execute(h, self.data, t), policies))
