@@ -25,4 +25,6 @@ jobs:
         IMAGE_NAME=ghcr.io/${{ github.repository }}
         IMAGE_NAME=$(echo $IMAGE_NAME | tr '[A-Z]' '[a-z]')
         docker tag github-container $IMAGE_NAME:latest
+        docker tag github-container $IMAGE_NAME:${{ github.sha }}
+        docker push $IMAGE_NAME:${{ github.sha }}
         docker push $IMAGE_NAME:latest
