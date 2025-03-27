@@ -13,6 +13,11 @@ source .venv/bin/activate  # source into the virtualenv
 pip install -r requirements.txt  # Install required dependencies for starline-optimizer
 ```
 
+In the event of ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.
+
+Set BELOW in pyvenv.cfg
+include-system-site-packages = false --> include-system-site-packages = true
+
 Additonally, to install this as a python package, run
 ```bash
 # Install this as a editable dependency for the python REPL
