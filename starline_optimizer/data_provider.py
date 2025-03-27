@@ -43,23 +43,40 @@ class DataProvider(cvx.data.MarketData):
         """
         for t in tickers:
             update_timeseries(f"series.{t}")
-        data = list(map(lambda t: _tuples_to_df(get_timespan(f"series.{t}")), tickers))
-        prices = map(lambda d, a: d[["price"]].rename({"price": a}, axis=1), data, tickers)
-        volumes = map(lambda d, a: d[["volume"]].rename({"volume": a}, axis=1), data, tickers)
+        
+        # Get data for each ticker and ensure unique indices
+        data = []
+        for t in tickers:
+            df = _tuples_to_df(get_timespan(f"series.{t}"))
+            df.index = pd.to_datetime(df.index)
+            # Convert price to float and volume to int immediately
+            df['price'] = pd.to_numeric(df['price'], errors='coerce')
+            df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
+            df = df[~df.index.duplicated(keep='last')]  # Remove duplicates
+            data.append(df)
+        
+        # Create separate price and volume series
+        prices = []
+        volumes = []
+        for d, t in zip(data, tickers):
+            price_series = d[["price"]].rename(columns={"price": t})
+            volume_series = d[["volume"]].rename(columns={"volume": t})
+            prices.append(price_series)
+            volumes.append(volume_series)
 
-        prices_df = pd.concat(prices, axis=1)
-        volumes_df = pd.concat(volumes, axis=1)
+        # Concatenate with outer join to preserve all dates
+        prices_df = pd.concat(prices, axis=1, join='outer')
+        volumes_df = pd.concat(volumes, axis=1, join='outer')
 
-        # All database entries are type str, convert to actual useful values
-        # If any price entry is missing from the dataframe use the previous date's entry
-        prices_df = prices_df.ffill().map(float)
-        volumes_df = volumes_df.fillna(0).map(int)
+        # Forward fill missing values
+        prices_df = prices_df.ffill()
+        volumes_df = volumes_df.fillna(0)
 
         self.tickers = tickers
         self.__prices = prices_df
         self.__return = prices_df.pct_change().fillna(0)
-        self.__return["USDOLLAR"] = 0.04**252  # TODO temp risk-free rate value
-        self.__volume = volumes_df  # TODO macro values have no volume
+        self.__return["USDOLLAR"] = 0.04/252  # Daily risk-free rate
+        self.__volume = volumes_df.astype(int)
 
     def serve(self, t: pd.Timestamp) -> DataInstance:
         """Serve data for policy and simulator at time t.
