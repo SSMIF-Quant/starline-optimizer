@@ -1,4 +1,4 @@
-import cvxportfolio
+import cvxportfolio as cvx
 
 # Initialize Policy
 current_period_returns_forecast = # historical mean return forecast
