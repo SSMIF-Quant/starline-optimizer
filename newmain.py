@@ -1,5 +1,29 @@
 import cvxportfolio as cvx
 
+from starline_optimizer.data_provider import DataProvider
+
+# Initialize tickers we want to optimize for
+tickers = ["AAPL", "MSFT", "GOOGL", "AMZN"]  # Add your desired tickers
+
+# Create DataProvider instance which will automatically:
+# 1. Update timeseries data for each ticker from Clickhouse
+# 2. Get historical prices and volumes
+# 3. Handle missing data through forward-filling
+# 4. Calculate returns
+data_provider = DataProvider(tickers)
+
+# Get the trading calendar (all available trading dates)
+trading_calendar = data_provider.trading_calendar()
+
+# Calculate historical mean returns for our forecasts
+# We'll use the first trading date to get all historical data
+first_trading_date = trading_calendar[0]
+past_returns, current_returns, past_volumes, current_volumes, current_prices = data_provider.serve(first_trading_date)
+
+# Use past returns to create our simple forecast
+current_period_returns_forecast = past_returns.mean()
+next_period_returns_forecast = current_period_returns_forecast  # Using same forecast for next period
+
 # Initialize Policy
 current_period_returns_forecast = # insert historical mean return forecast here
 next_period_returns_forecast = # insert historical mean return forecast for the next period here
