@@ -2,7 +2,7 @@
 
 import yfinance as yf
 import numpy as np
-from .clickhouse_globals import client
+from .env import client
 from .clickhouse import coerce_uppercase_tablename, get_recent_entry, upsert_entries
 
 

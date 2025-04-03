@@ -1,6 +1,6 @@
 import pandas as pd
 
-from .clickhouse_globals import DATABASES, client, OLDEST_ENTRY_DATE
+from .env import DATABASES, client, OLDEST_ENTRY_DATE
 
 
 def coerce_uppercase_tablename(table: str) -> str:
