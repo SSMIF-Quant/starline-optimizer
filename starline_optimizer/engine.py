@@ -31,6 +31,7 @@ class OptimizationEngine:
         self.t = self.data.trading_calendar()[-1]  # Current trading time
         self.risk_free_rate = 1.04 ** (1/252)  # TODO temp non-annualized risk free rate
         self._genid()
+        self._log(logger.info, "Successfully initalized {self.__id} with tickers {self.tickers}")
 
     def _log(self, severity: Callable, message: str, addtl_fields: dict = None):
         """Logs a message.
