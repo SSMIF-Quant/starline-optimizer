@@ -1,6 +1,10 @@
+import time
+import json
 import pandas as pd
 import cvxportfolio as cvx
 
+from .env import APP_ENV
+from .logger import logger
 from .clickhouse import get_timespan
 from .clickhouse_timeseries import update_timeseries
 
@@ -30,6 +34,7 @@ def _tuples_to_df(data: list[tuple[pd.Timestamp, float, int]]) -> pd.DataFrame:
 class DataProvider(cvx.data.MarketData):
     """Serves market data for the optimization engine."""
 
+    __id: str  # Used to identify different DataProviders within logs
     tickers: list[str]
     __prices: pd.DataFrame
     __return: pd.DataFrame
@@ -60,6 +65,21 @@ class DataProvider(cvx.data.MarketData):
         self.__return = prices_df.pct_change().fillna(0)
         self.__return["USDOLLAR"] = 0.04**252  # TODO temp risk-free rate value
         self.__volume = volumes_df  # TODO macro values have no volume
+        self.__genid()
+
+        if APP_ENV == "production":
+            logger.info(json.dumps({
+                "class_instance": self.__id,
+                "tickers": self.tickers,
+                "message": "Successfully initialized new DataProvider"
+                }))
+        else:
+            logger.info(f"Initalized {self.__id} with tickers {self.tickers}")
+
+    def __genid(self):
+        """Generates an 8-digit hash for the __id field of this DataProvider. """
+        hashstr = str(self.tickers) + str(time.time())
+        self.__id = "DataProvider" + str(abs(hash(hashstr)) % (10 ** 8))
 
     def serve(self, t: pd.Timestamp) -> DataInstance:
         """Serve data for policy and simulator at time t.
@@ -79,6 +99,15 @@ class DataProvider(cvx.data.MarketData):
         past_volumes = self.__volume.iloc[: date_pos - 1]
         curr_volumes = self.__volume.iloc[date_pos]
         curr_prices = self.__prices.iloc[date_pos]
+
+        if APP_ENV == "production":
+            logger.debug(json.dumps({
+                "class_instance": self.__id,
+                "tickers": self.tickers,
+                "message": "Served data for time {t}"
+                }))
+        else:
+            logger.debug(f"{self.__id} Served data for time {t}")
 
         return (past_returns, curr_returns, past_volumes, curr_volumes, curr_prices)
 

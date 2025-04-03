@@ -1,6 +1,7 @@
 import pandas as pd
 
 from .env import DATABASES, client, OLDEST_ENTRY_DATE
+from .logger import logger
 
 
 def coerce_uppercase_tablename(table: str) -> str:
@@ -102,7 +103,9 @@ def get_timespan(table: str, start: pd.Timestamp = None, end: pd.Timestamp = Non
 
     # List strings are tab-separated; make them newline-separated
     # and convert each resulting row into a tuple
-    return list(map(lambda r: tuple(r.split(", ")), ", ".join(data).split("\n")))
+    res = list(map(lambda r: tuple(r.split(", ")), ", ".join(data).split("\n")))
+    logger.debug(f"Fetched {len(res)} entries from {table}.")
+    return res
 
 
 def upsert_entries(table: str, rows: list[tuple] | pd.DataFrame, *, ch_client=None):
@@ -136,6 +139,7 @@ def upsert_entries(table: str, rows: list[tuple] | pd.DataFrame, *, ch_client=No
 
     # Deletes duplicate values
     ch_client.command(f"OPTIMIZE TABLE {table}")
+    logger.info(f"Data upsert for {table} succeeded.")
 
 
 def get_recent_entry(table: str) -> pd.Timestamp:
