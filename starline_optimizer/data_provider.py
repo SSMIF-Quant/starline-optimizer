@@ -66,28 +66,34 @@ class DataProvider(cvx.data.MarketData):
         self.__return = prices_df.pct_change().fillna(0)
         self.__return["USDOLLAR"] = 0.04**252  # TODO temp risk-free rate value
         self.__volume = volumes_df  # TODO macro values have no volume
-        self.__genid()
-        self.__log(logger.info, f"Successfully initalized {self.__id} with tickers {self.tickers}")
+        self._genid()
+        self._log(logger.info, f"Successfully initalized {self.__id} with tickers {self.tickers}")
 
-    def __log(self, severity: Callable, message: str, **kwargs):
+    def _log(self, severity: Callable, message: str, addtl_fields: dict = None):
         """Logs a message.
 
         :param severity: One of logger.trace, logger.debug, logger.info, logger.success,
                          logger.warning, logger.error, logger.critical
         :param message: Log message
-        :param kwargs: Additional JSON fields to log
+        :param addtl_fields: Additional JSON fields to log
         """
+        if addtl_fields is None:
+            addtl_fields = {}
+
         if APP_ENV == "production":
             severity(json.dumps({
                 "class_instance": self.__id,
                 "tickers": self.tickers,
                 "message": message,
-                **kwargs
+                **addtl_fields
                 }))
         else:
-            severity(f"{message}\n{json.dumps(kwargs, indent=4)}")
+            if addtl_fields == {}:
+                severity(message)
+            else:
+                severity(f"{message}\n{json.dumps(addtl_fields, indent=4)}")
 
-    def __genid(self):
+    def _genid(self):
         """Generates an 8-digit hash for the __id field of this DataProvider. """
         hashstr = str(self.tickers) + str(time.time())
         self.__id = "DataProvider" + str(abs(hash(hashstr)) % (10 ** 8))
@@ -111,7 +117,7 @@ class DataProvider(cvx.data.MarketData):
         curr_volumes = self.__volume.iloc[date_pos]
         curr_prices = self.__prices.iloc[date_pos]
 
-        self.__log(logger.trace, f"{self.__id} Served data for time {t}")
+        self._log(logger.trace, f"{self.__id} Served data for time {t}")
         return (past_returns, curr_returns, past_volumes, curr_volumes, curr_prices)
 
     def trading_calendar(
@@ -136,7 +142,7 @@ class DataProvider(cvx.data.MarketData):
         if end_time is not None:
             end_date_pos = calendar.get_loc(end_time)
             if not isinstance(end_date_pos, int):
-                self.__log(logger.error, f"Price data for {self.__id} has duplicate timestamps.")
+                self._log(logger.error, f"Price data for {self.__id} has duplicate timestamps.")
                 raise pd.errors.DataError("Price data for DataProvider has duplicate timestamps.")
             if not include_end:
                 end_date_pos -= 1
