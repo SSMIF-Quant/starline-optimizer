@@ -1,8 +1,11 @@
 import os
 
 import pandas as pd
-
+# Load environment variables from a .env file
 from clickhouse_connect import get_client, common
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # This should always be set before creating a client
 common.set_setting("autogenerate_session_id", False)
