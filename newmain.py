@@ -70,7 +70,8 @@ def main():
             cvx.StocksHoldingCost()
         ],
         round_trades=True,
-        max_fraction_liquidity=0.05
+        max_fraction_liquidity=0.05,
+        missing_data_policy='fill_mean'
     )
 
     # Add hyperparameter optimization
