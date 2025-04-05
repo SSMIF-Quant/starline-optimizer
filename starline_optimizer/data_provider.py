@@ -70,6 +70,8 @@ class DataProvider(cvx.data.MarketData):
 
         # Forward fill missing values
         prices_df = prices_df.ffill()
+        # Fill any remaining nulls with the mean of each column
+        prices_df = prices_df.fillna(prices_df.mean())
         volumes_df = volumes_df.fillna(0)
 
         self.tickers = tickers
