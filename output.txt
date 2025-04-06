@@ -1,0 +1,148 @@
+['XLB', 'XLE', 'XLC', 'XLF']
+Starting backtest at 2001-06-13 20:00:00
+Ending backtest at 2003-06-19 20:00:00
+Total trading days being tested: 504
+
+Optimizing hyperparameters...
+iteration 0
+Current objective:
+-0.28163443699800467
+iteration 1
+Current objective:
+-0.2809592320039895
+iteration 2
+Current objective:
+-0.28001135333446575
+iteration 3
+Current objective:
+-0.27894912456986204
+iteration 4
+Current objective:
+-0.27782962671359773
+iteration 5
+Current objective:
+-0.27644930807908197
+iteration 6
+Current objective:
+-0.27464767556725816
+iteration 7
+Current objective:
+-0.27285679575929667
+iteration 8
+Current objective:
+-0.27086675373609836
+iteration 9
+Current objective:
+-0.26843584091959516
+iteration 10
+Current objective:
+-0.26596169967469885
+iteration 11
+Current objective:
+-0.26321014353411726
+iteration 12
+Current objective:
+-0.2607244966939098
+iteration 13
+Current objective:
+-0.2596077951326724
+iteration 14
+Current objective:
+-0.25731587530732203
+iteration 15
+Current objective:
+-0.25485137825691034
+iteration 16
+Current objective:
+-0.2513281476630534
+iteration 17
+Current objective:
+-0.24740398867761218
+iteration 18
+Current objective:
+-0.2428456231831472
+iteration 19
+Current objective:
+-0.2373821400615362
+iteration 20
+Current objective:
+-0.23074383511581043
+iteration 21
+Current objective:
+-0.22454925667246162
+iteration 22
+Current objective:
+-0.21441808003509982
+iteration 23
+Current objective:
+-0.20331404601885938
+iteration 24
+Current objective:
+-0.188706401791587
+iteration 25
+Current objective:
+-0.17120450802958534
+iteration 26
+Current objective:
+-0.15042784865327774
+iteration 27
+Current objective:
+-0.12767859002191578
+iteration 28
+Current objective:
+-0.10384440657223062
+iteration 29
+Current objective:
+-0.08323159129100595
+iteration 30
+Current objective:
+-0.08322994690166638
+iteration 31
+Current objective:
+-0.0832290197670717
+
+Optimized hyperparameters:
+gamma_risk: -29.000
+gamma_hold: 0.000
+gamma_trade: -2.000
+
+Running backtest with optimized parameters...
+
+Backtest Results:
+Sharpe Ratio: -0.08
+Average Return: 0.01%
+Annualized Average Return: 1.69%
+Volatility: 1.73%
+Annualized Volatility: 27.36%
+Maximum Drawdown: -0.00%
+Total Profit: $-40,165.14
+Average Turnover: 0.10%
+
+Portfolio Weights Over Time:
+
+First 5 periods:
+                     XLB  XLE  XLC       XLF  USDOLLAR
+2001-06-13 20:00:00  0.0  0.0  0.0  0.000000  1.000000
+2001-06-14 20:00:00  0.0  0.0  0.0  0.067635  0.932365
+2001-06-17 20:00:00  0.0  0.0  0.0  0.193458  0.806542
+2001-06-18 20:00:00  0.0  0.0  0.0  0.213306  0.786694
+2001-06-19 20:00:00  0.0  0.0  0.0  0.304422  0.695578
+
+Last 5 periods:
+                     XLB  XLE  XLC       XLF  USDOLLAR
+2003-06-11 20:00:00  0.0  0.0  0.0  0.999991  0.000009
+2003-06-12 20:00:00  0.0  0.0  0.0  0.999991  0.000009
+2003-06-15 20:00:00  0.0  0.0  0.0  0.999991  0.000009
+2003-06-16 20:00:00  0.0  0.0  0.0  0.999992  0.000008
+2003-06-17 20:00:00  0.0  0.0  0.0  0.999992  0.000008
+
+Average Portfolio Weights:
+XLB         0.000000
+XLE         0.000000
+XLC         0.000000
+XLF         0.978229
+USDOLLAR    0.021771
+dtype: float64
+
+Full weights history saved to 'portfolio_weights.csv'
+(.venv) (base) karthik@Karthiks-Air starline-optimizer-1 % 
