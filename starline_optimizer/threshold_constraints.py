@@ -18,6 +18,13 @@ class ReturnsTarget(cvx.constraints.Constraint):
         self.lim = lim
         return
 
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        # TODO rhat shouldn't be omitted from repr
+        return f"ReturnsTarget({self.lim})"
+
     def compile_to_cvxpy(
         self, w_plus: cp.Variable, z: cp.Variable, *args, **kwargs
     ) -> cp.Constraint:
@@ -36,7 +43,7 @@ class ReturnsTarget(cvx.constraints.Constraint):
 
 # TODO completely broken due to cxvpy and how it handles the quadratic form
 class RiskThreshold(cvx.constraints.Constraint):
-    def __init__(self, sigma: Iterable[Iterable[float]], lim: float):
+    def __init__(self, sigma: Iterable[Iterable[[float]]], lim: float):
         """Risk threshold constraint for the convex optimizer.
         Ensures all portfolios have risk less than or equal to lim.
 
@@ -47,6 +54,12 @@ class RiskThreshold(cvx.constraints.Constraint):
         self.sigma = sigma
         self.lim = lim
         return
+
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        return f"RiskThreshold({self.lim})"
 
     def compile_to_cvxpy(
         self, w_plus: cp.Variable, z: cp.Variable, *args, **kwargs

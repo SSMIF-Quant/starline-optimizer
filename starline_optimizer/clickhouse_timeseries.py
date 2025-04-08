@@ -1,8 +1,10 @@
 # Utils for updating/reading clickhouse timeseries in the series database
 
+import json
 import yfinance as yf
 import numpy as np
-from .clickhouse_globals import client
+from .logger import logger
+from .env import client
 from .clickhouse import coerce_uppercase_tablename, get_recent_entry, upsert_entries
 
 
@@ -42,11 +44,13 @@ def update_timeseries(table: str):
     _, ticker = table.split(".")
     create_series_table(ticker)  # If the table doesn't exist beforehand
     start_date = get_recent_entry(table)
+    logger.info(f"Fetching data for {ticker} starting from {start_date.date()}.")
 
-    # TODO we can do better than yfinance
     dataraw = yf.Tickers(ticker).download(start=start_date)
     if dataraw is None:
-        raise RuntimeError(f"Failed to download yfinance data for ticker {ticker}")
+        reason = f"Failed to download yfinance data for ticker {ticker}"
+        logger.error(json.dumps(reason))
+        raise RuntimeError(reason)
 
     # DataFrame manip to get dataframes with date, price, volume columns for each ticker
     data = dataraw.swaplevel(axis=1)[ticker][["Close", "Volume"]]

@@ -1,10 +1,11 @@
 import os
+import traceback
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
 
-from starline_optimizer import OptimizationEngine, TradeResult
+from starline_optimizer import OptimizationEngine, TradeResult, logger
 
 TRADE_PERIODS = 252
 app = Flask(__name__)
@@ -37,10 +38,19 @@ def optimize():
                 "annualized_return": op.h_return(starting_h + u) ** TRADE_PERIODS,
                 "annualized_risk": op.h_risk((starting_h + u).iloc[:-1]) * TRADE_PERIODS
                 }
+
+    # Check request body params
     try:
         body = request.get_json()
+        logger.info(f"{request.host} received request from {request.origin}:\n{body}")
         tickers = body["tickers"]
+    except KeyError:
+        reason = "{request.host} failed: Request parameter 'ticker' required but not found."
+        logger.warning(reason)
+        return jsonify({"error": reason}), 400
 
+    # Exec optimizer
+    try:
         op = OptimizationEngine(tickers)
 
         starting_h = pd.Series(body.get("starting_portfolio", op._cash_only()))
@@ -51,10 +61,8 @@ def optimize():
 
         trades = op.execute(starting_h, r_target=r_target, sig_thresh=sig_thresh)
         return jsonify(list(map(lambda t: trade_to_json(t, starting_h, op), trades)))
-    except KeyError:
-        return jsonify({"error": "Request parameter 'ticker' required but not found."}), 400
     except Exception as e:
-        print(e)
+        logger.error(f"{request.host} failed:\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 

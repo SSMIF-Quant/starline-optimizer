@@ -4,10 +4,8 @@ import pandas as pd
 
 from clickhouse_connect import get_client, common
 
-# This should always be set before creating a client
-common.set_setting("autogenerate_session_id", False)
-
 __REQUIRED_ENV_VARS = [
+    "APP_ENV",
     "CLICKHOUSE_HOST",
     "CLICKHOUSE_PORT",
     "CLICKHOUSE_USER",
@@ -18,6 +16,7 @@ for key in __REQUIRED_ENV_VARS:
     if key not in os.environ:
         raise OSError(f"Required environment variable {key} is missing.")
 
+APP_ENV = os.getenv("APP_ENV", default="development")
 DB_SETTINGS = {
     "host": os.environ["CLICKHOUSE_HOST"],
     "port": os.environ["CLICKHOUSE_PORT"],
@@ -25,6 +24,9 @@ DB_SETTINGS = {
     "password": os.environ["CLICKHOUSE_PASSWORD"],
     "database": os.environ["CLICKHOUSE_DATABASE"],
 }
+
+# This should always be set before creating a client
+common.set_setting("autogenerate_session_id", False)
 
 client = get_client(**DB_SETTINGS)
 
