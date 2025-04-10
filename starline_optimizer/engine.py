@@ -1,4 +1,3 @@
-import time
 import json
 import numpy as np
 import pandas as pd
@@ -21,22 +20,29 @@ class OptimizationEngine:
     __id: str
     data: DataProvider
     tickers: list[str]
-    t: pd.Timestamp
+    t: pd.Timestamp  # Trade execution time (usually today)
     risk_free_rate: float
 
     def __init__(self, tickers: list[str], id: str, returns: pd.DataFrame | None,
                  varcovar: pd.DataFrame | None):
-        # If returns/varcovar is None the associated returns/risk forecaster
-        # is a cvxportfolio builtin model
+        """
+        :param tickers: Tickers to optimize a portfolio over
+        :param id: Job uuid
+        :param returns: Forward looking returns
+                        returns.index[0] (the first DataFrame row timestamp) should be today
+        :param varcovar: Ticker variance-covariance matrix
+        """
         self.tickers = tickers
         self.returns = returns
         self.varcovar = varcovar
         self.__id = id
 
         self.data = DataProvider(tickers, id, returns)
-        self.t = self.data.trading_calendar()[-1]  # Current trading time
-        self.risk_free_rate = 1.04 ** (1/252)  # TODO temp non-annualized risk free rate
-        self._log(logger.info, "Successfully initalized {self.__id} Optimizer with tickers {self.tickers}")
+        self.t = self.data.trading_calendar()[0]  # Represents when we execute trades, ie. t = today
+        self.risk_free_rate = 1.04 ** (1/12)  # TODO temp non-annualized risk free rate
+
+        init_log = f"{self.__id} Successfully initalized OptimizationEngine with {self.tickers}"
+        self._log(logger.info, init_log)
 
     def _log(self, severity: Callable, message: str, addtl_fields: dict = None):
         """Logs a message.
@@ -51,7 +57,7 @@ class OptimizationEngine:
 
         if APP_ENV == "production":
             severity(json.dumps({
-                "class_instance": self.__id,
+                "job_id": self.__id,
                 "data_instance": self.data.__id,
                 "tickers": self.tickers,
                 "message": message,
@@ -63,25 +69,16 @@ class OptimizationEngine:
             else:
                 severity(f"{message}\n{json.dumps(addtl_fields, indent=4)}")
 
-    def _genid(self):
-        """Generates an 8-digit hash for the __id field of this OptimizationEngine. """
-        hashstr = str(self.tickers) + str(time.time())
-        self.__id = "OptimizationEngine" + str(abs(hash(hashstr)) % (10 ** 8))
-
     def _default_r_forecast(self):
         """Produces a new returns forecaster instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
-        if self.returns is None:
-            return cvx.forecast.HistoricalMeanReturn()
-        return cvx.ReturnsForecast(r_hat=self.returns)
+        return cvx.ReturnsForecast(r_hat=self.returns, decay=0.5)
 
     def _default_risk_metric(self):
         """Produces a new risk metric instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
-        if self.varcovar is None:
-            return cvx.FullCovariance()
         return cvx.FullCovariance(Sigma=self.varcovar)
 
     def _make_policy(self, gamma_risk: float, gamma_trade: float,
@@ -99,11 +96,11 @@ class OptimizationEngine:
             "r_forecaster": str(self._default_r_forecast())
             })
         return cvx.MultiPeriodOptimization(
-            cvx.ReturnsForecast(self._default_r_forecast())
+            self._default_r_forecast()
             - gamma_risk * self._default_risk_metric()
             - gamma_trade * cvx.StocksTransactionCost(),
             [cvx.LongOnly(), cvx.LeverageLimit(1), *constraints],
-            planning_horizon=6,
+            planning_horizon=1,
             solver="ECOS",
         )
 
@@ -123,12 +120,10 @@ class OptimizationEngine:
 
         :return: Expected return at current time
         """
-        if self.varcovar is None:
-            raise Exception("OptimizationEngine.h_return(): Unable to calculate portfolio returns without self.returns.")
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
         exp_returns = self.returns.iloc[0].to_numpy()
-        # Include risk-free rate for cash position
-        # exp_returns["USDOLLAR"] = self.risk_free_rate
+        # Append risk-free rate for cash position
+        np.append(exp_returns, self.risk_free_rate)
         return 1 + sum(map(lambda a, b: a * b, exp_returns, w))
 
     def h_risk(self, h: pd.Series) -> float:
@@ -139,8 +134,6 @@ class OptimizationEngine:
 
         :return: Expected risk at current time
         """
-        if self.varcovar is None:
-            raise Exception("OptimizationEngine.h_risk(): Unable to calculate portfolio risk without self.varcovar.")
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
         risk_mat = self.varcovar.to_numpy()
         return w.T @ risk_mat @ w
@@ -173,14 +166,11 @@ class OptimizationEngine:
 
         risk_gammas = [5, 10, 20, 50, 100, 200, 500]
         trade_gammas = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5]
-        self._log(logger.info, f"{self.__id} Executing MPO policies", {
-            "risk_gammas": risk_gammas,
-            "trade_gammas": trade_gammas
-            })
         policies = [
             self._make_policy(gr, gt, addtl_constraints)
             for gr in risk_gammas for gt in trade_gammas
         ]
+        self._log(logger.info, f"{self.__id} Executing {len(policies)} MPO policies")
 
         res = list(map(lambda p: p.execute(h, self.data, t), policies))
         self._log(logger.success, f"{self.__id} MPO execution succeeded")

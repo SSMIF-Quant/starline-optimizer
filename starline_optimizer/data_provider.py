@@ -1,4 +1,3 @@
-import time
 import json
 import pandas as pd
 import cvxportfolio as cvx
@@ -6,7 +5,6 @@ from typing import Callable
 
 from .env import APP_ENV
 from .logger import logger
-from .clickhouse import get_timespan
 from .clickhouse_timeseries import update_timeseries
 
 # TODO Returns forecast dataframe from Clickhouse
@@ -35,38 +33,54 @@ def _tuples_to_df(data: list[tuple[pd.Timestamp, float, int]]) -> pd.DataFrame:
 class DataProvider(cvx.data.MarketData):
     """Serves market data for the optimization engine. """
 
-    __id: str  # Used to identify different DataProviders within logs
+    __id: str  # Jon id
     tickers: list[str]
     __prices: pd.DataFrame
     __return: pd.DataFrame
     __volume: pd.DataFrame
 
+    def _default_prices_df(self, ch_table: str):
+        """Generates a default prices DataFrame based on returns DataFrame and Clickhouse data.
+        Uses the most recent Clickhouse asset prices as the current price of each ticker,
+        then uses self.__return to generate all other rows.
+
+        :return: DataFrame with same index, columns, shape as self.__return representing price data.
+        """
+        pass  # TODO implement
+
+    def _default_volumes_df(self):
+        """Generates a default volume DataFrame based on returns DataFrame.
+        Sets volume to 1m for every period.
+        Requires self.__return to exist before calling.
+
+        :return: DataFrame with same index, columns, shape as self.__return,
+                 but with all values set to 1_000_000
+        """
+        return self.__return.map(lambda x: 1_000_000)  # default to 1m shares traded every period
+
     def __init__(self, tickers: list[str], id: str, returns: pd.DataFrame):
-        """Initializes DataProvider with price and volume data.
-        Both DataFrames must have pd.Timestamp indexes and columns with the price data.
+        """Initializes DataProvider with price and volume data, which are required by cvxportfolio.
 
         :param tickers: List of tickers for this DataProvider instance
         """
+        self.__id = id
         for t in tickers:
             update_timeseries(f"series.{t}")
-        data = list(map(lambda t: _tuples_to_df(get_timespan(f"series.{t}")), tickers))
-        prices = map(lambda d, a: d[["price"]].rename({"price": a}, axis=1), data, tickers)
-        volumes = map(lambda d, a: d[["volume"]].rename({"volume": a}, axis=1), data, tickers)
-
-        prices_df = pd.concat(prices, axis=1)
-        volumes_df = pd.concat(volumes, axis=1)
-
-        # All database entries are type str, convert to actual useful values
-        # If any price entry is missing from the dataframe use the previous date's entry
-        prices_df = prices_df.ffill().map(float)
-        volumes_df = volumes_df.fillna(0).map(int)
-
+        # TODO fetch the most recent entry from clickhouse
+        # TODO generate prices df
         self.tickers = tickers
-        self.__prices = prices_df
-        self.__return = prices_df.pct_change().fillna(0)
-        self.__return["USDOLLAR"] = 0.04**252  # TODO temp risk-free rate value
-        self.__volume = volumes_df  # TODO macro values have no volume
-        self._log(logger.info, f"Successfully initalized {self.__id} DataProvider with tickers {self.tickers}")
+        self.__return = returns
+        self.__prices = self.__return.map(lambda x: 50)
+        self.__volume = self._default_volumes_df()
+        self.__return["USDOLLAR"] = 1.04**(1/12)  # TODO temp risk-free rate value
+
+        df_log = f"""{self.__id} DataProvider input data:\nReturns:\n{self.__return}
+                     \nPrices:\n{self.__prices}
+                     \nVolumes:\n{self.__volume}
+                 """
+        self._log(logger.debug, df_log)
+        init_log = f"{self.__id} Successfully initalized DataProvider tickers {self.tickers}"
+        self._log(logger.info, init_log)
 
     def _log(self, severity: Callable, message: str, addtl_fields: dict = None):
         """Logs a message.
@@ -81,7 +95,7 @@ class DataProvider(cvx.data.MarketData):
 
         if APP_ENV == "production":
             severity(json.dumps({
-                "class_instance": self.__id,
+                "job_id": self.__id,
                 "tickers": self.tickers,
                 "message": message,
                 **addtl_fields
@@ -91,11 +105,6 @@ class DataProvider(cvx.data.MarketData):
                 severity(message)
             else:
                 severity(f"{message}\n{json.dumps(addtl_fields, indent=4)}")
-
-    def _genid(self):
-        """Generates an 8-digit hash for the __id field of this DataProvider. """
-        hashstr = str(self.tickers) + str(time.time())
-        self.__id = "DataProvider" + str(abs(hash(hashstr)) % (10 ** 8))
 
     def serve(self, t: pd.Timestamp) -> DataInstance:
         """Serve data for policy and simulator at time t.
@@ -152,7 +161,7 @@ class DataProvider(cvx.data.MarketData):
 
     @property
     def periods_per_year(self) -> int:
-        return 252  # TODO quarterly, monthly, etc
+        return 12  # TODO quarterly, monthly, etc
 
     @property
     def full_universe(self) -> pd.Index:

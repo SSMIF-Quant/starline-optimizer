@@ -135,7 +135,7 @@ def optimize():
 
     # Exec optimizer
     try:
-        op = OptimizationEngine(tickers, id, returns, varcovar)
+        op = OptimizationEngine(tickers, job_uuid, returns, varcovar)
 
         starting_h = pd.Series(body.get("starting_portfolio", op._cash_only()))
         starting_h.index = np.append(op.data.tickers, "USDOLLAR")

@@ -63,18 +63,6 @@ def list_tables(database: str = None) -> list[str]:
         return ".".join(tables_unformatted).split("\n")
 
 
-def table_columns(table: str) -> list[str]:
-    """
-    Gets the column names of the table
-
-    :param table: Table name
-
-    :return: Table column names
-    """
-    tablecols = " ".join(client.command(f"DESCRIBE TABLE {table}")).split("\n")
-    return list(map(lambda c: c.strip(), tablecols))
-
-
 def get_timespan(table: str, start: pd.Timestamp = None, end: pd.Timestamp = None) -> list[tuple]:
     """
     Gets all time series entries within a certain timespan
@@ -108,37 +96,32 @@ def get_timespan(table: str, start: pd.Timestamp = None, end: pd.Timestamp = Non
     return res
 
 
-def upsert_entries(table: str, rows: list[tuple] | pd.DataFrame, *, ch_client=None):
+def upsert_entries(table: str, rows: list[tuple] | pd.DataFrame):
     """
     Inserts or updates entries in the table
+    Creates the database table if it doesn't exist
 
     :param table: The table name to update data for, case insensitive
     :param rows: Entries to update the table with
                  If rows is list[tuple], the first element of each tuple must be the date
                  If rows is DataFrame, column labels must match table column names
                  and the date column must be convertible to pd.Timestamp
-
-    Optional
-    :param ch_client: Alternate Clickhouse client to use for insertion
     """
-    if ch_client is None:
-        ch_client = client
-
     table = coerce_uppercase_tablename(table)
 
     if isinstance(rows, pd.DataFrame):
         rows["date"] = pd.to_datetime(rows["date"])  # Type coercion
         # Omit all entries before OLDEST_ENTRY_DATE
         rows = rows[rows["date"] >= OLDEST_ENTRY_DATE]
-        ch_client.insert_df(table, rows)
+        client.insert_df(table, rows)
 
     else:
         # Omit all entries before OLDEST_ENTRY_DATE
         rows = list(filter(lambda r: r[0] >= OLDEST_ENTRY_DATE, rows))
-        ch_client.command(f"INSERT INTO {table} (*) VALUES", rows)
+        client.command(f"INSERT INTO {table} (*) VALUES", rows)
 
     # Deletes duplicate values
-    ch_client.command(f"OPTIMIZE TABLE {table}")
+    client.command(f"OPTIMIZE TABLE {table}")
     logger.info(f"Data upsert for {table} succeeded.")
 
 
