@@ -5,7 +5,6 @@ from typing import Callable
 
 from .env import APP_ENV
 from .logger import logger
-from .clickhouse_timeseries import update_timeseries
 
 # TODO Returns forecast dataframe from Clickhouse
 

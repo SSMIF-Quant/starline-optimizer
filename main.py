@@ -116,7 +116,7 @@ def optimize():
         tickers = op.data.tickers
         u, t, shares_traded = trade
         return {
-                "trade": dict(zip(tickers + ["USDOLLAR"], u.to_list())),
+                "trade_dollar_value": dict(zip(tickers + ["USDOLLAR"], u.to_list())),
                 "exec_time": t,
                 "shares_traded": dict(zip(tickers, shares_traded.to_list())),
                 "annualized_return": op.h_return(starting_h + u) ** TRADE_PERIODS,
