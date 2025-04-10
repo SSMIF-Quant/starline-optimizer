@@ -20,9 +20,9 @@ def validate_request(req):
 
     :param req: Request body
 
-    :return: Request params tickers, returns, varcovar, r_target, sig_thresh
+    :return: Request params tickers, prices, returns, varcovar, r_target, sig_thresh
     """
-    def validate_obj(obj: any, m: TypeAdapter, emsg: str):
+    def validate_param(obj: any, m: TypeAdapter, emsg: str):
         """ Wraps pydantic validation around try-catch so it throws an error with
         a predefined message.
 
@@ -33,31 +33,36 @@ def validate_request(req):
         :return: If validation succeeds, returns the validated object
         """
         try:
-            return m.validate_python(obj), None
+            return m.validate_python(obj)
         except ValidationError:
             raise Exception(emsg)
 
-    # Check request body params
+    # Get request body params
     tickers = req.get("tickers", None)
+    prices = req.get("prices", None)  # TODO currently implemented as a vector of floats
     returns = req.get("returns", None)
     varcovar = req.get("varcovar", None)
+    r_target = req.get("returns_target", None)
+    sig_thresh = req.get("risk_threshold", None)
 
     # Ensure required params exist
     if tickers is None:
         raise Exception("Request parameter 'tickers' required but not found.")
+    if prices is None:
+        raise Exception("Request parameter 'prices' required but not found.")
     if returns is None:
         raise Exception("Request parameter 'returns' required but not found.")
     if varcovar is None:
         raise Exception("Request parameter 'varcovar' required but not found.")
-    r_target = req.get("returns_target", None)
-    sig_thresh = req.get("risk_threshold", None)
 
     # Check params types
     strl = TypeAdapter(list[str])
-    floatl = TypeAdapter(list[list[float]])
-    tickers, emsg = validate_obj(tickers, strl, "Parameter 'tickers' must have type string[]")
-    returns, emsg = validate_obj(returns, floatl, "Parameter 'returns' must have type float[][]")
-    varcovar, emsg = validate_obj(varcovar, floatl, "Parameter 'varcovar' must have type float[][]")
+    floatl = TypeAdapter(list[float])
+    floatll = TypeAdapter(list[list[float]])
+    tickers = validate_param(tickers, strl, "Parameter 'tickers' must have type string[]")
+    prices = validate_param(prices, floatl, "Parameter 'returns' must have type float[]")
+    returns = validate_param(returns, floatll, "Parameter 'returns' must have type float[][2]")
+    varcovar = validate_param(varcovar, floatll, "Parameter 'varcovar' must have type float[][]")
     if r_target is not None and not isinstance(r_target, float):
         raise Exception("Optional parameter 'r_target' must have type float.")
     if sig_thresh is not None and not isinstance(sig_thresh, float):
@@ -71,6 +76,8 @@ def validate_request(req):
         raise Exception("Parameter 'tickers' must not be empty")
     if len(returns) != 2:
         raise Exception("Parameter 'returns' must have exactly 2 expected returns vectors.")
+    if len(prices) != n:
+        raise Exception("Parameter 'prices' length doesn't match length of param 'tickers'")
     if len(returns[0]) != n:
         raise Exception("Parameter 'returns[0]' length doesn't match length of param 'tickers'")
     if len(returns[1]) != n:
@@ -80,7 +87,7 @@ def validate_request(req):
     for vc_vec in varcovar:
         if len(vc_vec) != n:
             raise Exception("Parameter 'varcovar' is not square (length != width)")
-    return tickers, returns, varcovar, r_target, sig_thresh
+    return tickers, prices, returns, varcovar, r_target, sig_thresh
 
 
 @app.route("/", methods=["POST"])
@@ -88,9 +95,10 @@ def optimize():
     """Takes a list of tickers and optimizes a portfolio over them.
 
     :param tickers: Tickers to optimize a portfolio over.
-    :param returns: n vectors of return forecasts for 2 periods
-                    Each vector represents a return forecast for the current
-                    and the next period
+    :param prices: n-length vector of current asset prices.
+    :param returns: 2 vectors of return forecasts for n assets
+                    The first vector represents forecasts for today
+                    The second vector represents forecasts for the next trading period
     :param varcovar: nxn variance covariance matrix
 
     Optional
@@ -119,23 +127,26 @@ def optimize():
     body = request.get_json()
 
     try:
-        tickers, returns, varcovar, r_target, sig_thresh = validate_request(body)
+        tickers, prices, returns, varcovar, r_target, sig_thresh = validate_request(body)
     except Exception as e:
         reason = str(e)
         logger.error(f"{request.host} / POST failed: {reason}")
         return jsonify({"error": reason}), 400
 
+    job_uuid = uuid.uuid1()
+    # TODO end request with success + job uuid response and run the job
+
     # Convert param vectors into DataFrame
     # TODO current returns forecasts timestamps defaults to today and one month after
     now = pd.Timestamp.today().floor("d")
     one_mo_after = now + pd.Timedelta(30, "days")
+    prices = pd.Series(prices, index=tickers)
     returns = pd.DataFrame(returns, index=[now, one_mo_after], columns=tickers)
     varcovar = pd.DataFrame(varcovar, index=tickers, columns=tickers)
-    job_uuid = uuid.uuid1()
 
     # Exec optimizer
     try:
-        op = OptimizationEngine(tickers, job_uuid, returns, varcovar)
+        op = OptimizationEngine(tickers, job_uuid, prices, returns, varcovar)
 
         starting_h = pd.Series(body.get("starting_portfolio", op._cash_only()))
         starting_h.index = np.append(op.data.tickers, "USDOLLAR")

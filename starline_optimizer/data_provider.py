@@ -39,14 +39,18 @@ class DataProvider(cvx.data.MarketData):
     __return: pd.DataFrame
     __volume: pd.DataFrame
 
-    def _default_prices_df(self, ch_table: str):
-        """Generates a default prices DataFrame based on returns DataFrame and Clickhouse data.
-        Uses the most recent Clickhouse asset prices as the current price of each ticker,
-        then uses self.__return to generate all other rows.
+    def _default_prices_df(self, init_prices: pd.Series):
+        """Generates a default prices DataFrame based on returns DataFrame and user passed prices.
+        Uses self.__return to generate all expected future prices starting from the first one.
+
+        :param init_prices: Initial prices vector
 
         :return: DataFrame with same index, columns, shape as self.__return representing price data.
         """
-        pass  # TODO implement
+        next_period_prices = init_prices * pd.Series(self.__return.iloc[0])
+        return pd.DataFrame([init_prices, next_period_prices],
+                            index=self.__return.index,
+                            columns=self.tickers)
 
     def _default_volumes_df(self):
         """Generates a default volume DataFrame based on returns DataFrame.
@@ -58,23 +62,25 @@ class DataProvider(cvx.data.MarketData):
         """
         return self.__return.map(lambda x: 1_000_000)  # default to 1m shares traded every period
 
-    def __init__(self, tickers: list[str], id: str, returns: pd.DataFrame):
+    def __init__(self, tickers: list[str], id: str, curr_prices: pd.Series, returns: pd.DataFrame):
         """Initializes DataProvider with price and volume data, which are required by cvxportfolio.
 
         :param tickers: List of tickers for this DataProvider instance
+        :param id: Job uuid
+        :param curr_prices: Current asset prices
+        :param returns: Forward looking returns
+                        returns.index[0] (the first DataFrame row timestamp) should be today
+                        returns.index[1] should be the next trading period
         """
         self.__id = id
-        for t in tickers:
-            update_timeseries(f"series.{t}")
-        # TODO fetch the most recent entry from clickhouse
-        # TODO generate prices df
         self.tickers = tickers
         self.__return = returns
-        self.__prices = self.__return.map(lambda x: 50)
+        self.__prices = self._default_prices_df(curr_prices)
         self.__volume = self._default_volumes_df()
         self.__return["USDOLLAR"] = 1.04**(1/12)  # TODO temp risk-free rate value
 
-        df_log = f"""{self.__id} DataProvider input data:\nReturns:\n{self.__return}
+        df_log = f"""{self.__id} DataProvider input data:
+                     \nReturns:\n{self.__return}
                      \nPrices:\n{self.__prices}
                      \nVolumes:\n{self.__volume}
                  """

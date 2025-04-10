@@ -23,13 +23,15 @@ class OptimizationEngine:
     t: pd.Timestamp  # Trade execution time (usually today)
     risk_free_rate: float
 
-    def __init__(self, tickers: list[str], id: str, returns: pd.DataFrame | None,
-                 varcovar: pd.DataFrame | None):
+    def __init__(self, tickers: list[str], id: str, curr_prices: pd.Series,
+                 returns: pd.DataFrame, varcovar: pd.DataFrame):
         """
         :param tickers: Tickers to optimize a portfolio over
         :param id: Job uuid
+        :param curr_prices: Current asset prices
         :param returns: Forward looking returns
                         returns.index[0] (the first DataFrame row timestamp) should be today
+                        returns.index[1] should be the next trading period
         :param varcovar: Ticker variance-covariance matrix
         """
         self.tickers = tickers
@@ -37,7 +39,7 @@ class OptimizationEngine:
         self.varcovar = varcovar
         self.__id = id
 
-        self.data = DataProvider(tickers, id, returns)
+        self.data = DataProvider(tickers, id, curr_prices, returns)
         self.t = self.data.trading_calendar()[0]  # Represents when we execute trades, ie. t = today
         self.risk_free_rate = 1.04 ** (1/12)  # TODO temp non-annualized risk free rate
 
