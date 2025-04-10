@@ -1,5 +1,6 @@
 import os
 import traceback
+import uuid
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from pydantic import TypeAdapter, ValidationError
@@ -19,7 +20,7 @@ def validate_request(req):
 
     :param req: Request body
 
-    :return: Request params tickers, returns, varcovar
+    :return: Request params tickers, returns, varcovar, r_target, sig_thresh
     """
     def validate_obj(obj: any, m: TypeAdapter, emsg: str):
         """ Wraps pydantic validation around try-catch so it throws an error with
@@ -48,26 +49,38 @@ def validate_request(req):
         raise Exception("Request parameter 'returns' required but not found.")
     if varcovar is None:
         raise Exception("Request parameter 'varcovar' required but not found.")
+    r_target = req.get("returns_target", None)
+    sig_thresh = req.get("risk_threshold", None)
 
     # Check params types
-    str_list = TypeAdapter(list[str])
-    float_list = TypeAdapter(list[float])
-    tickers, emsg = validate_obj(tickers, str_list, "Parameter 'tickers' must have type string[]")
-    returns, emsg = validate_obj(returns, float_list, "Parameter 'returns' must have type float[]")
-    varcovar, emsg = validate_obj(varcovar, float_list, "Parameter 'varcovar' must have type float[][]")
+    strl = TypeAdapter(list[str])
+    floatl = TypeAdapter(list[list[float]])
+    tickers, emsg = validate_obj(tickers, strl, "Parameter 'tickers' must have type string[]")
+    returns, emsg = validate_obj(returns, floatl, "Parameter 'returns' must have type float[][]")
+    varcovar, emsg = validate_obj(varcovar, floatl, "Parameter 'varcovar' must have type float[][]")
+    if r_target is not None and not isinstance(r_target, float):
+        raise Exception("Optional parameter 'r_target' must have type float.")
+    if sig_thresh is not None and not isinstance(sig_thresh, float):
+        raise Exception("Optional parameter 'sig_thresh' must have type float.")
+    if sig_thresh is not None and sig_thresh <= 0:
+        raise Exception("Optional parameter 'sig_thresh' must be a positive float.")
 
     # Check length constraints
     n = len(tickers)
     if n == 0:
         raise Exception("Parameter 'tickers' must not be empty")
-    if len(returns[0]) != n or len(returns[1]) != n:
-        raise Exception("Parameter 'returns' length doesn't match length of param 'tickers'")
+    if len(returns) != 2:
+        raise Exception("Parameter 'returns' must have exactly 2 expected returns vectors.")
+    if len(returns[0]) != n:
+        raise Exception("Parameter 'returns[0]' length doesn't match length of param 'tickers'")
+    if len(returns[1]) != n:
+        raise Exception("Parameter 'returns[1]' length doesn't match length of param 'tickers'")
     if len(varcovar) != n:
         raise Exception("Parameter 'varcovar' length doesn't match length of param 'tickers'")
     for vc_vec in varcovar:
         if len(vc_vec) != n:
             raise Exception("Parameter 'varcovar' is not square (length != width)")
-    return tickers, returns, varcovar
+    return tickers, returns, varcovar, r_target, sig_thresh
 
 
 @app.route("/", methods=["POST"])
@@ -75,9 +88,9 @@ def optimize():
     """Takes a list of tickers and optimizes a portfolio over them.
 
     :param tickers: Tickers to optimize a portfolio over.
-    :param returns: 2 vectors of return forecasts for n tickers
-                    The first vector represents returns now,
-                    the second represents returns for an arbitrary next period
+    :param returns: n vectors of return forecasts for 2 periods
+                    Each vector represents a return forecast for the current
+                    and the next period
     :param varcovar: nxn variance covariance matrix
 
     Optional
@@ -106,26 +119,33 @@ def optimize():
     body = request.get_json()
 
     try:
-        tickers, returns, varcovar = validate_request(body)
+        tickers, returns, varcovar, r_target, sig_thresh = validate_request(body)
     except Exception as e:
         reason = str(e)
         logger.error(f"{request.host} / POST failed: {reason}")
         return jsonify({"error": reason}), 400
 
+    # Convert param vectors into DataFrame
+    # TODO current returns forecasts timestamps defaults to today and one month after
+    now = pd.Timestamp.today().floor("d")
+    one_mo_after = now + pd.Timedelta(30, "days")
+    returns = pd.DataFrame(returns, index=[now, one_mo_after], columns=tickers)
+    varcovar = pd.DataFrame(varcovar, index=tickers, columns=tickers)
+    job_uuid = uuid.uuid1()
+
     # Exec optimizer
     try:
-        op = OptimizationEngine(tickers)
+        op = OptimizationEngine(tickers, id, returns, varcovar)
 
         starting_h = pd.Series(body.get("starting_portfolio", op._cash_only()))
         starting_h.index = np.append(op.data.tickers, "USDOLLAR")
 
-        r_target = body.get("returns_target", None)
-        sig_thresh = body.get("risk_threshold", None)
-
         trades = op.execute(starting_h, r_target=r_target, sig_thresh=sig_thresh)
+        logger.success(f"{request.host} / POST succeeded: Job {job_uuid} resolved")
         return jsonify(list(map(lambda t: trade_to_json(t, starting_h, op), trades)))
     except Exception as e:
-        logger.error(f"{request.host} failed:\n{traceback.format_exc()}")
+        reason = f"{request.host} / POST failed: Job {job_uuid} failed:\n{traceback.format_exc()}"
+        logger.error(reason)
         return jsonify({"error": str(e)}), 500
 
 

@@ -33,7 +33,7 @@ def _tuples_to_df(data: list[tuple[pd.Timestamp, float, int]]) -> pd.DataFrame:
 
 
 class DataProvider(cvx.data.MarketData):
-    """Serves market data for the optimization engine."""
+    """Serves market data for the optimization engine. """
 
     __id: str  # Used to identify different DataProviders within logs
     tickers: list[str]
@@ -41,7 +41,7 @@ class DataProvider(cvx.data.MarketData):
     __return: pd.DataFrame
     __volume: pd.DataFrame
 
-    def __init__(self, tickers: list[str]):
+    def __init__(self, tickers: list[str], id: str, returns: pd.DataFrame):
         """Initializes DataProvider with price and volume data.
         Both DataFrames must have pd.Timestamp indexes and columns with the price data.
 
@@ -66,8 +66,7 @@ class DataProvider(cvx.data.MarketData):
         self.__return = prices_df.pct_change().fillna(0)
         self.__return["USDOLLAR"] = 0.04**252  # TODO temp risk-free rate value
         self.__volume = volumes_df  # TODO macro values have no volume
-        self._genid()
-        self._log(logger.info, f"Successfully initalized {self.__id} with tickers {self.tickers}")
+        self._log(logger.info, f"Successfully initalized {self.__id} DataProvider with tickers {self.tickers}")
 
     def _log(self, severity: Callable, message: str, addtl_fields: dict = None):
         """Logs a message.

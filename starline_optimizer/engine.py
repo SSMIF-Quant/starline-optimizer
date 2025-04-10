@@ -24,14 +24,19 @@ class OptimizationEngine:
     t: pd.Timestamp
     risk_free_rate: float
 
-    def __init__(self, tickers: list[str]):
-        # TODO get return forecasts from clickhouse and pass into r_forecast
+    def __init__(self, tickers: list[str], id: str, returns: pd.DataFrame | None,
+                 varcovar: pd.DataFrame | None):
+        # If returns/varcovar is None the associated returns/risk forecaster
+        # is a cvxportfolio builtin model
         self.tickers = tickers
-        self.data = DataProvider(tickers)
+        self.returns = returns
+        self.varcovar = varcovar
+        self.__id = id
+
+        self.data = DataProvider(tickers, id, returns)
         self.t = self.data.trading_calendar()[-1]  # Current trading time
         self.risk_free_rate = 1.04 ** (1/252)  # TODO temp non-annualized risk free rate
-        self._genid()
-        self._log(logger.info, "Successfully initalized {self.__id} with tickers {self.tickers}")
+        self._log(logger.info, "Successfully initalized {self.__id} Optimizer with tickers {self.tickers}")
 
     def _log(self, severity: Callable, message: str, addtl_fields: dict = None):
         """Logs a message.
@@ -67,13 +72,17 @@ class OptimizationEngine:
         """Produces a new returns forecaster instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
-        return cvx.forecast.HistoricalMeanReturn()
+        if self.returns is None:
+            return cvx.forecast.HistoricalMeanReturn()
+        return cvx.ReturnsForecast(r_hat=self.returns)
 
     def _default_risk_metric(self):
         """Produces a new risk metric instance.
         The same forecast instance can't be used multiple times in convex equation solvers.
         """
-        return cvx.forecast.HistoricalFactorizedCovariance()
+        if self.varcovar is None:
+            return cvx.FullCovariance()
+        return cvx.FullCovariance(Sigma=self.varcovar)
 
     def _make_policy(self, gamma_risk: float, gamma_trade: float,
                      constraints: list[cvx.constraints.Constraint]) -> cvx.policies.Policy:
@@ -91,7 +100,7 @@ class OptimizationEngine:
             })
         return cvx.MultiPeriodOptimization(
             cvx.ReturnsForecast(self._default_r_forecast())
-            - gamma_risk * cvx.FullCovariance(self._default_risk_metric())
+            - gamma_risk * self._default_risk_metric()
             - gamma_trade * cvx.StocksTransactionCost(),
             [cvx.LongOnly(), cvx.LeverageLimit(1), *constraints],
             planning_horizon=6,
@@ -114,8 +123,10 @@ class OptimizationEngine:
 
         :return: Expected return at current time
         """
+        if self.varcovar is None:
+            raise Exception("OptimizationEngine.h_return(): Unable to calculate portfolio returns without self.returns.")
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
-        exp_returns = self._default_r_forecast().estimate(self.data, self.t)
+        exp_returns = self.returns.iloc[0].to_numpy()
         # Include risk-free rate for cash position
         # exp_returns["USDOLLAR"] = self.risk_free_rate
         return 1 + sum(map(lambda a, b: a * b, exp_returns, w))
@@ -128,8 +139,10 @@ class OptimizationEngine:
 
         :return: Expected risk at current time
         """
+        if self.varcovar is None:
+            raise Exception("OptimizationEngine.h_risk(): Unable to calculate portfolio risk without self.varcovar.")
         w = h / np.sum(np.abs(h))  # Portfolio by asset weight
-        risk_mat = self._default_risk_metric().estimate(self.data, self.t)
+        risk_mat = self.varcovar.to_numpy()
         return w.T @ risk_mat @ w
 
     def execute(self, h: pd.Series, t: pd.Timestamp = None, *args,
